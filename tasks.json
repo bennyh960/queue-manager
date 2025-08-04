@@ -1,0 +1,110 @@
+[
+  {
+    "id": 1,
+    "payload": {
+      "x": 1
+    },
+    "handler": "sendEmail",
+    "status": "failed",
+    "log": "Email is required"
+  },
+  {
+    "id": 2,
+    "payload": {
+      "email": "ben2@sc.com"
+    },
+    "handler": "sendEmail",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 3,
+    "payload": {
+      "imageUrl": "http://example.com/image.jpg"
+    },
+    "handler": "resizeImage",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 4,
+    "payload": {
+      "x": 1
+    },
+    "handler": "sendEmail",
+    "status": "failed",
+    "log": "Email is required"
+  },
+  {
+    "id": 5,
+    "payload": {
+      "email": "ben2@sc.com"
+    },
+    "handler": "sendEmail",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 6,
+    "payload": {
+      "imageUrl": "http://example.com/image.jpg"
+    },
+    "handler": "resizeImage",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 7,
+    "payload": {
+      "email": "sda"
+    },
+    "handler": "sendEmail",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 8,
+    "payload": {
+      "email": "ben2@sc.com"
+    },
+    "handler": "sendEmail",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 9,
+    "payload": {
+      "imageUrl": "http://example.com/image.jpg"
+    },
+    "handler": "resizeImage",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 10,
+    "payload": {
+      "email": "sda@sc.com"
+    },
+    "handler": "sendEmail",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 11,
+    "payload": {
+      "email": "ben2@sc.com"
+    },
+    "handler": "sendEmail",
+    "status": "done",
+    "log": ""
+  },
+  {
+    "id": 12,
+    "payload": {
+      "imageUrl": "http://example.com/image.jpg"
+    },
+    "handler": "resizeImage",
+    "status": "done",
+    "log": ""
+  }
+]
