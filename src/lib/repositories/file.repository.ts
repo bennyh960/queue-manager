@@ -14,6 +14,8 @@ export class FileQueueRepository<T> implements QueueRepository<T> {
   }
 
   async saveTasks(tasks: T[]): Promise<void> {
-    await fs.writeFile(this.filePath, JSON.stringify(tasks, null, 2));
+    const tmpPath = this.filePath + '.tmp';
+    await fs.writeFile(tmpPath, JSON.stringify(tasks, null, 2));
+    await fs.rename(tmpPath, this.filePath); // Atomic swap
   }
 }

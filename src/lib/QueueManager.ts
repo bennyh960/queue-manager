@@ -7,7 +7,7 @@ export type Task<H extends Record<string, (payload: any) => any>> = {
   id: number;
   handler: keyof H;
   payload: Parameters<H[keyof H]>[0];
-  status: 'pending' | 'processing' | 'done' | 'failed';
+  status: 'pending' | 'processing' | 'done' | 'failed' | 'deleted';
   log: string;
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +38,9 @@ export class QueueManager<H extends Record<string, (payload: any) => any>> {
   // Graceful Shutdown / Dynamic Worker Control
   private workerActive = false;
   private workerPromise?: Promise<void[]>;
+
+  // single process concurrency lock.but for multiple processes -  need atomic update in storage backend.
+  private dequeueLock = false;
 
   private constructor(
     repository: QueueRepository<Task<H>>,
@@ -143,18 +146,35 @@ export class QueueManager<H extends Record<string, (payload: any) => any>> {
     return task;
   }
 
+  async removeTask(id: number): Promise<void> {
+    const task = this.getTaskById(id);
+    if (task) {
+      task.status = 'deleted';
+      await this.saveTasks();
+      // Optionally, remove from in-memory array:
+      // this.tasks = this.tasks.filter(t => t.id !== id);
+    }
+  }
+
   private readonly sortTasksByPriority = (a: Task<H>, b: Task<H>): number => {
     return (b.priority ?? 0) - (a.priority ?? 0) || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   };
 
   async dequeue(): Promise<Task<H> | undefined> {
-    const task = [...this.tasks].sort(this.sortTasksByPriority).find(t => t.status === 'pending');
-    if (task) {
-      task.status = 'processing';
-      await this.saveTasks();
-      return task;
+    if (this.dequeueLock) return undefined;
+    this.dequeueLock = true;
+
+    try {
+      const task = [...this.tasks].sort(this.sortTasksByPriority).find(t => t.status === 'pending');
+      if (task) {
+        task.status = 'processing';
+        await this.saveTasks();
+        return task;
+      }
+      return undefined;
+    } finally {
+      this.dequeueLock = false;
     }
-    return undefined;
   }
 
   getAllTasks(): Task<H>[] {
