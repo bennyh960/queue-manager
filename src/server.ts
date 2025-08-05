@@ -1,14 +1,14 @@
 import express from 'express';
-import JsonQueue, { type Task } from './lib/jsonQueue.js';
+import QueueManager, { type Task } from './lib/QueueManager.js';
 import { resizeImage, sendEmail, type HandlerMap } from './methods.js';
 
 const app = express();
 app.use(express.json());
 
-const queue = JsonQueue.getInstance<HandlerMap>({ backend: { type: 'file', filePath: './data/tasks2.json' } });
+const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'file', filePath: './data/tasks2.json' } });
 queue.register('sendEmail', sendEmail, { maxRetries: 3, maxProcessingTime: 2000 });
 queue.register('resizeImage', resizeImage);
-queue.queueWorker();
+queue.startWorker();
 
 // Add a task to the queue
 app.post('/tasks', async (req, res) => {
@@ -34,6 +34,15 @@ app.get('/task/:id', (req, res) => {
   const id = req.params.id;
   const task = queue.getTaskById(parseInt(id));
   res.status(201).json({ message: 'Task added', task });
+});
+app.delete('/task/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const task = await queue.removeTask(parseInt(id));
+    res.status(200).json({ message: 'Task removed', task });
+  } catch (error) {
+    res.status(404).json({ message: String(error) });
+  }
 });
 
 app.get('/tasks', async (req, res) => {
@@ -88,4 +97,32 @@ app.post('/task/update', async (req, res) => {
 
 app.listen(3000, () => {
   console.log('Queue server running on http://localhost:3000');
+});
+
+queue.on('taskAdded', task => {
+  console.log(`Task added: ${task.id} - ${task.handler}`);
+});
+
+queue.on('taskStarted', task => {
+  console.log(`Task started: ${task.id} - ${task.handler}`);
+});
+
+queue.on('taskCompleted', task => {
+  console.log(`Task completed: ${task.id} - ${task.handler}`);
+});
+
+queue.on('taskFailed', (task, error) => {
+  console.error(`Task failed: ${task.id} - ${task.handler}`, error);
+});
+
+queue.on('taskRetried', task => {
+  console.log(`Task retried: ${task.id} - ${task.handler}`);
+});
+
+queue.on('taskRemoved', task => {
+  console.log(`Task removed: ${task.id} - ${task.handler}`);
+});
+
+queue.on('taskStuck', task => {
+  console.warn(`Task stuck: ${task.id} - ${task.handler}`);
 });
