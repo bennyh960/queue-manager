@@ -14,6 +14,7 @@ export type Task<H extends Record<string, (payload: any) => any>> = {
   maxRetries?: number; // Optional per-task override
   maxProcessingTime?: number; // Optional per-task override (ms)
   retryCount: number; // Track retries
+  priority?: number; //  Higher = more urgent
 };
 
 type QueueBackendConfig = { type: 'file'; filePath: string } | { type: 'memory' } | { type: 'custom'; repository: QueueRepository<any> };
@@ -142,8 +143,12 @@ export class QueueManager<H extends Record<string, (payload: any) => any>> {
     return task;
   }
 
+  private readonly sortTasksByPriority = (a: Task<H>, b: Task<H>): number => {
+    return (b.priority ?? 0) - (a.priority ?? 0) || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  };
+
   async dequeue(): Promise<Task<H> | undefined> {
-    const task = this.tasks.find(t => t.status === 'pending');
+    const task = [...this.tasks].sort(this.sortTasksByPriority).find(t => t.status === 'pending');
     if (task) {
       task.status = 'processing';
       await this.saveTasks();
