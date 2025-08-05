@@ -36,7 +36,7 @@ export class QueueManager<H extends Record<string, (payload: any) => any>> {
 
   // Graceful Shutdown / Dynamic Worker Control
   private workerActive = false;
-  private workerPromise?: Promise<void>;
+  private workerPromise?: Promise<void[]>;
 
   private constructor(
     repository: QueueRepository<Task<H>>,
@@ -208,15 +208,22 @@ export class QueueManager<H extends Record<string, (payload: any) => any>> {
     }
   }
 
-  async startWorker() {
+  async startWorker(concurrency = 1) {
+    console.log(`Starting ${concurrency} workers`);
     this.workerActive = true;
-    this.workerPromise = this.queueWorker();
+    const workers = [];
+    for (let i = 0; i < concurrency; i++) {
+      workers.push(this.queueWorker());
+    }
+    this.workerPromise = Promise.all(workers);
   }
 
   async stopWorker() {
+    console.log('Worker stopping...');
     this.workerActive = false;
     // Wait for worker to finish current task
     await this.workerPromise;
+    console.log('Worker stopped');
   }
 
   private async queueWorker() {
