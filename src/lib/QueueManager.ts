@@ -1,4 +1,3 @@
-import fs from 'fs';
 import { HandlerRegistry } from './handlerRegistry.js';
 import type { QueueRepository } from './repositories/repository.interface.js';
 import { FileQueueRepository } from './repositories/file.repository.js';
@@ -23,17 +22,21 @@ const singletonRegistry = new HandlerRegistry();
 
 const MAX_PROCESSING_TIME = 10 * 60 * 1000; // 10 minutes in milliseconds
 
-export class JsonQueue<H extends Record<string, (payload: any) => any>> {
-  private static instance: JsonQueue<any>;
+export class QueueManager<H extends Record<string, (payload: any) => any>> {
+  private static instance: QueueManager<any>;
   private tasks: Task<H>[] = [];
   private nextId = 1;
-  private delay: number;
-  private registry: HandlerRegistry<Record<string, (payload: any) => any>>;
-  private repository: QueueRepository<Task<H>>;
+  private readonly delay: number;
+  private readonly registry: HandlerRegistry<Record<string, (payload: any) => any>>;
+  private readonly repository: QueueRepository<Task<H>>;
   private initialized = false;
   private initPromise?: Promise<void>;
-  private MAX_RETRIES: number;
-  private MAX_PROCESSING_TIME: number;
+  private readonly MAX_RETRIES: number;
+  private readonly MAX_PROCESSING_TIME: number;
+
+  // Graceful Shutdown / Dynamic Worker Control
+  private workerActive = false;
+  private workerPromise?: Promise<void>;
 
   private constructor(
     repository: QueueRepository<Task<H>>,
@@ -53,24 +56,24 @@ export class JsonQueue<H extends Record<string, (payload: any) => any>> {
     backend: QueueBackendConfig;
     delay?: number;
     singleton?: boolean;
-  }): JsonQueue<H> {
+  }): QueueManager<H> {
     const repository: QueueRepository<Task<H>> = this.getBackendRepository(args.backend);
 
     const isSingleton = args.singleton !== false; // default to singleton
     const delay = args.delay ?? 500;
 
     if (isSingleton) {
-      if (!JsonQueue.instance) {
-        JsonQueue.instance = new JsonQueue(repository, delay, true);
+      if (!QueueManager.instance) {
+        QueueManager.instance = new QueueManager(repository, delay, true);
       } else {
         // Optional: warn if repository is different from the original
-        if (JsonQueue.instance.repository !== repository) {
+        if (QueueManager.instance.repository !== repository) {
           console.warn('Different repository detected for singleton instance');
         }
       }
-      return JsonQueue.instance as JsonQueue<H>;
+      return QueueManager.instance as QueueManager<H>;
     }
-    return new JsonQueue(repository, delay, false);
+    return new QueueManager(repository, delay, false);
   }
 
   private static getBackendRepository<H extends Record<string, (payload: any) => any>>(
@@ -205,11 +208,22 @@ export class JsonQueue<H extends Record<string, (payload: any) => any>> {
     }
   }
 
-  async queueWorker() {
+  async startWorker() {
+    this.workerActive = true;
+    this.workerPromise = this.queueWorker();
+  }
+
+  async stopWorker() {
+    this.workerActive = false;
+    // Wait for worker to finish current task
+    await this.workerPromise;
+  }
+
+  private async queueWorker() {
     if (!this.initialized) {
       await this.init();
     }
-    while (true) {
+    while (this.workerActive) {
       const task = await this.dequeue();
       if (!task) {
         await new Promise(res => setTimeout(res, this.delay));
@@ -258,4 +272,4 @@ export class JsonQueue<H extends Record<string, (payload: any) => any>> {
   }
 }
 
-export default JsonQueue;
+export default QueueManager;
