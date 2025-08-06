@@ -19,4 +19,23 @@ export class HandlerRegistry<H extends Record<string, (payload: Object) => any>>
   get(name: string): HandlerWithOptions | undefined {
     return this.handlers.get(name);
   }
+
+  inspectHandler(name: string) {
+    const handler = this.get(name);
+    if (!handler) {
+      return { params: undefined, fn: undefined, options: undefined };
+    }
+
+    const fnStr = handler.fn.toString().replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, '');
+    // Match function ( { key1, key2 } ) or ( {key1, key2} )
+    const match = fnStr.match(/\{\s*([^}]*)\s*\}/);
+    if (!match || !match[1]) return { params: undefined, ...handler };
+    // Split by comma, trim spaces, remove default values
+    const params = match[1]
+      .split(',')
+      .map(k => k.split('=')[0]?.trim())
+      .filter(Boolean);
+
+    return { params, ...handler };
+  }
 }

@@ -1,5 +1,4 @@
 import express from 'express';
-import QueueManager, { type Task } from './lib/QueueManager.js';
 import { resizeImage, sendEmail, type HandlerMap } from './methods.js';
 
 const app = express();

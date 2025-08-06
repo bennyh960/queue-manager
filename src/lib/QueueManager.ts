@@ -1,59 +1,73 @@
 import { HandlerRegistry } from './handlerRegistry.js';
-import type { QueueRepository } from './repositories/repository.interface.js';
-import { FileQueueRepository } from './repositories/file.repository.js';
-import { MemoryQueueRepository } from './repositories/memory.repository.js';
+import type { QueueRepository } from '../repositories/repository.interface.js';
+import { FileQueueRepository } from '../repositories/file.repository.js';
+import { MemoryQueueRepository } from '../repositories/memory.repository.js';
 import { EventEmitter } from 'events';
-
-type HandlerMap = Record<string, (payload: any) => any>;
-
-export type Task<H extends HandlerMap> = {
-  id: number;
-  handler: keyof H;
-  payload: Parameters<H[keyof H]>[0];
-  status: 'pending' | 'processing' | 'done' | 'failed' | 'deleted';
-  log: string;
-  createdAt: Date;
-  updatedAt: Date;
-  maxRetries?: number; // Optional per-task override
-  maxProcessingTime?: number; // Optional per-task override (ms)
-  retryCount: number; // Track retries
-  priority?: number; //  Higher = more urgent
-};
-
-export type QueueManagerEvents<H extends HandlerMap> = {
-  taskAdded: (task: Task<H>) => void;
-  taskStarted: (task: Task<H>) => void;
-  taskCompleted: (task: Task<H>) => void;
-  taskFailed: (task: Task<H>, error: Error) => void;
-  taskRetried: (task: Task<H>) => void;
-  taskRemoved: (task: Task<H>) => void;
-  taskStuck: (task: Task<H>) => void;
-};
-
-type QueueBackendConfig = { type: 'file'; filePath: string } | { type: 'memory' } | { type: 'custom'; repository: QueueRepository<any> };
+import type { HandlerMap, LoggerLike, QueueBackendConfig, QueueManagerEvents, Task } from '../types/index.js';
+import { DefaultLogger } from '../util/logger.js';
 
 const singletonRegistry = new HandlerRegistry();
 
 const MAX_PROCESSING_TIME = 10 * 60 * 1000; // 10 minutes in milliseconds
+const MAX_RETRIES = 1; // Default max retries for tasks
 
 export class QueueManager<H extends HandlerMap> extends EventEmitter {
+  // Singleton instance for QueueManager
+  // If you want to use multiple instances, set `singleton` to false in `getInstance`
+  // and manage them separately.
   private static instance: QueueManager<any>;
+
+  // In-memory storage for tasks
+  // This is not persistent and will be lost on server restart.
   private tasks: Task<H>[] = [];
+
+  // Unique ID for the next task
+  // This is used to ensure each task has a unique ID.
   private nextId = 1;
+
+  // Delay between task checks in milliseconds
+  // This is used to control how often the queue checks for new tasks.
   private readonly delay: number;
+
+  // Registry for handlers
+  // This is used to register and manage task handlers.
   private readonly registry: HandlerRegistry<HandlerMap>;
+
+  // Repository for persistent storage
+  // This is used to load and save tasks to a persistent storage backend.
   private readonly repository: QueueRepository<Task<H>>;
+
+  // Initialization state
+  // This is used to track whether the queue manager has been initialized.
   private initialized = false;
+  // Promise for initialization
+  // This is used to ensure that initialization is only done once.
+  // If initialization is in progress, this will hold the promise.
+  // If initialization is complete, this will be undefined.
   private initPromise?: Promise<void>;
+
+  // Default configuration for max retries and processing time
+  // These are used to control how many times a task can be retried and how long
+  // a task can be processed before it is considered stuck.
+  // These can be overridden on register handler or even when adding a task to the queue.
   private readonly MAX_RETRIES: number;
   private readonly MAX_PROCESSING_TIME: number;
 
   // Graceful Shutdown / Dynamic Worker Control
+  // This is used to control the worker's state and manage graceful shutdowns.
+  // `workerActive` indicates whether the worker is currently processing tasks.
+  // `workerPromise` holds the promise for the worker's execution.
+  // `dequeueLock` is used to prevent multiple processes from dequeuing tasks at the
+  // same time, ensuring that only one task is processed at a time.
+  // This is important for maintaining the integrity of the queue and preventing
+  // race conditions.
   private workerActive = false;
   private workerPromise?: Promise<void[]>;
 
   // single process concurrency lock.but for multiple processes -  need atomic update in storage backend.
   private dequeueLock = false;
+
+  private readonly logger: LoggerLike | undefined;
 
   public override on<K extends keyof QueueManagerEvents<H>>(event: K, listener: QueueManagerEvents<H>[K]): this {
     return super.on(event, listener);
@@ -67,8 +81,9 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     repository: QueueRepository<Task<H>>,
     delay: number = 500,
     singleton: boolean = true,
-    maxRetries: number = 1,
-    maxProcessingTime: number = MAX_PROCESSING_TIME
+    maxRetries: number = MAX_RETRIES,
+    maxProcessingTime: number = MAX_PROCESSING_TIME, // 10 minutes default
+    logger: LoggerLike = new DefaultLogger()
   ) {
     super();
     this.repository = repository;
@@ -76,12 +91,20 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     this.registry = singleton ? singletonRegistry : new HandlerRegistry();
     this.MAX_RETRIES = maxRetries;
     this.MAX_PROCESSING_TIME = maxProcessingTime;
+    this.logger = logger; // Optional logger, can be used for logging events
   }
 
+  /**
+   * Get an instance of QueueManager.
+   * If `singleton` is true, it returns the same instance every time.
+   * If `singleton` is false, it creates a new instance each time.
+   * @param args Configuration for the queue manager
+   */
   public static getInstance<H extends HandlerMap>(args: {
     backend: QueueBackendConfig;
     delay?: number;
     singleton?: boolean;
+    logger?: LoggerLike;
   }): QueueManager<H> {
     const repository: QueueRepository<Task<H>> = this.getBackendRepository(args.backend);
 
@@ -90,18 +113,24 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
 
     if (isSingleton) {
       if (!QueueManager.instance) {
-        QueueManager.instance = new QueueManager(repository, delay, true);
+        QueueManager.instance = new QueueManager(repository, delay, true, MAX_RETRIES, MAX_PROCESSING_TIME, args.logger);
       } else {
         // Optional: warn if repository is different from the original
         if (QueueManager.instance.repository !== repository) {
-          console.warn('Different repository detected for singleton instance');
+          QueueManager.instance.log('warn', 'Different repository detected for singleton instance');
         }
       }
       return QueueManager.instance as QueueManager<H>;
     }
-    return new QueueManager(repository, delay, false);
+    return new QueueManager(repository, delay, false, MAX_RETRIES, MAX_PROCESSING_TIME, args.logger);
   }
 
+  /**
+   * Get the backend repository based on the configuration.
+   * This method creates and returns the appropriate repository instance
+   * based on the backend type specified in the configuration.
+   * @param backend Configuration for the queue backend
+   */
   private static getBackendRepository<H extends HandlerMap>(backend: QueueBackendConfig): QueueRepository<Task<H>> {
     switch (backend.type) {
       case 'file':
@@ -115,6 +144,11 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     }
   }
 
+  /**
+   * Initialize the queue manager.
+   * This method loads tasks from the repository and sets the next ID for new tasks.
+   * It ensures that the queue manager is ready to process tasks.
+   */
   private async init() {
     if (this.initialized) return;
     if (this.initPromise) return this.initPromise;
@@ -122,11 +156,16 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
       await this.loadTasksFromRepository();
       this.nextId = this.tasks.length > 0 ? Math.max(...this.tasks.map(t => t.id)) + 1 : 1;
       this.initialized = true;
-      console.log(`JsonQueue initialized with ${this.tasks.length} tasks`);
+      this.log('info', `queue manager initialized with ${this.tasks.length} tasks`);
     })();
     return await this.initPromise;
   }
 
+  /**
+   * Load tasks from the repository.
+   * This method retrieves tasks from the persistent storage backend and populates
+   * the in-memory task array.
+   */
   async loadTasksFromRepository(): Promise<void> {
     if (!this.repository) {
       throw new Error('Repository is not initialized');
@@ -134,10 +173,22 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     this.tasks = await this.repository.loadTasks();
   }
 
+  /**
+   * Save tasks to the repository.
+   * This method saves the current in-memory task array to the persistent storage backend.
+   */
   private async saveTasks() {
     await this.repository.saveTasks(this.tasks);
   }
 
+  /**
+   * Add a task to the queue.
+   * This method creates a new task with the specified handler and payload,
+   * and adds it to the in-memory task array. It also saves the tasks to the repository.
+   * @param handler The name of the handler to execute for this task
+   * @param payload The data to be processed by the handler
+   * @param options Optional parameters for max retries and processing time
+   */
   async addTaskToQueue<K extends keyof H>(
     handler: K,
     payload: Parameters<H[K]>[0],
@@ -167,6 +218,11 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     return task;
   }
 
+  /**
+   * Remove a task from the queue by ID.
+   * This method marks a task as deleted and saves the updated task list to the repository.
+   * @param id The ID of the task to remove
+   */
   async removeTask(id: number): Promise<Task<H> | undefined> {
     const task = this.getTaskById(id);
     if (task && task.status !== 'deleted') {
@@ -183,10 +239,22 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     }
   }
 
+  /**
+   * Sort tasks by priority and creation date.
+   * This method sorts tasks based on their priority and creation date.
+   * Higher priority tasks are processed first, and if priorities are equal,
+   * older tasks are processed first.
+   */
   private readonly sortTasksByPriority = (a: Task<H>, b: Task<H>): number => {
     return (b.priority ?? 0) - (a.priority ?? 0) || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   };
 
+  /**
+   * Dequeue a task from the queue.
+   * This method finds the next pending task, marks it as processing, and returns it.
+   * It also saves the updated task list to the repository.
+   * If no pending tasks are found, it returns undefined.
+   */
   async dequeue(): Promise<Task<H> | undefined> {
     if (this.dequeueLock) return undefined;
     this.dequeueLock = true;
@@ -226,6 +294,12 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     return undefined;
   }
 
+  /**
+   * Update the retry count for a task and reset its status to 'pending'.
+   * This method increments the retry count for a task and resets its status to 'pending'.
+   * It also saves the updated task list to the repository.
+   * @param id The ID of the task to update
+   */
   async updateTaskRetryCount(id: number): Promise<Task<H> | undefined> {
     const task = this.getTaskById(id);
     if (task) {
@@ -240,19 +314,25 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     return undefined;
   }
 
+  /**
+   * Check and handle stuck tasks.
+   * This method checks for tasks that are stuck in the 'processing' state for too long
+   * and either retries them or marks them as failed based on their retry count.
+   * stuck is defined as tasks that have been in 'processing' state longer than `maxProcessingTime` as follow: task level > handler level > instance level
+   */
   async checkAndHandleStuckTasks(): Promise<void> {
     const now = Date.now();
     for (const task of this.tasks) {
       if (task.status === 'processing') {
         const elapsed = now - new Date(task.updatedAt).getTime();
-        console.log(`Checking task ${task.id} status: elapsed time ${elapsed}ms`);
+        this.log('info', `Checking task ${task.id} status: elapsed time ${elapsed}ms`);
         const maxProcessingTime = task.maxProcessingTime ?? this.MAX_PROCESSING_TIME;
         if (elapsed > maxProcessingTime) {
           this.emit('taskStuck', task);
-          console.warn(`Task ${task.id} is stuck`);
+          this.log('warn', `Task ${task.id} is stuck`);
           const maxRetries = task.maxRetries ?? this.MAX_RETRIES;
           if (task.retryCount < maxRetries) {
-            console.warn(`Retrying task ${task.id} (${task.retryCount + 1}/${maxRetries})`);
+            this.log('warn', `Retrying task ${task.id} (${task.retryCount + 1}/${maxRetries})`);
             await this.updateTaskRetryCount(task.id);
           } else {
             await this.updateTaskStatus(task.id, 'failed', `Task failed after ${task.retryCount}/${maxRetries} retries`);
@@ -263,7 +343,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
   }
 
   async startWorker(concurrency = 1) {
-    console.log(`Starting ${concurrency} workers`);
+    this.log('info', `Starting ${concurrency} workers`);
     this.workerActive = true;
     const workers = [];
     for (let i = 0; i < concurrency; i++) {
@@ -273,13 +353,33 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
   }
 
   async stopWorker() {
-    console.log('Worker stopping...');
+    this.log('info', 'Worker stopping...');
     this.workerActive = false;
     // Wait for worker to finish current task
     await this.workerPromise;
-    console.log('Worker stopped');
+    this.log('info', 'Worker stopped');
   }
 
+  /**
+   * Queue worker function.
+   * This function runs in a loop, dequeuing tasks and processing them.
+   * It handles task execution, error handling, and task status updates.
+   * * It emits events for task lifecycle changes such as task started, completed, failed, retried, and removed.
+   * * It also checks for stuck tasks and handles them accordingly.
+   * * @remarks
+   * This method is designed to be run in a loop, continuously processing tasks from the queue.
+   * * It will keep running until `workerActive` is set to false, allowing for graceful shutdowns.
+   * * @returns A promise that resolves when the worker stops processing tasks.
+   * * @throws Error if the handler for a task is not found.
+   * * @example
+   * ```typescript
+   * const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'file', filePath: './data/tasks.json' } });
+   * queue.register('sendEmail', sendEmail, { maxRetries: 3, maxProcessingTime: 2000 });
+   * queue.register('resizeImage', resizeImage);
+   * queue.startWorker();
+   *
+   *
+   * */
   private async queueWorker() {
     if (!this.initialized) {
       await this.init();
@@ -300,7 +400,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
         await this.updateTaskStatus(task.id, 'done');
         this.emit('taskCompleted', task);
       } catch (err: any) {
-        console.error(`Task ${task.id} failed:`, err);
+        this.log('error', `Task ${task.id} failed:`, err);
         const log = err?.message?.toString() || 'Unknown error';
         this.updateTaskStatus(task.id, 'failed', log);
         const emitError = err instanceof Error ? err : new Error(String(err));
@@ -309,6 +409,14 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     }
   }
 
+  /**
+   * Register a handler for a specific task type.
+   * This method registers a handler function for a specific task type,
+   * allowing the queue manager to execute the handler when a task of that type is dequeued.
+   * @param name The name of the handler
+   * @param handler The function to execute for this handler
+   * @param options Optional parameters for max retries and processing time
+   */
   register<K extends string, F extends (payload: any) => any>(
     name: K,
     handler: F,
@@ -317,23 +425,21 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     this.registry.register(name, handler, options);
   }
 
-  getRegisteredHandler(name: string) {
-    const handler = this.registry.get(name);
-    if (!handler) {
-      return { params: undefined, fn: undefined, options: undefined };
+  /**
+   * Get the registered handler for a specific task type.
+   * This method retrieves the handler function and its parameters for a specific task type.
+   * - useful for validating payloads before adding tasks to the queue.
+   * @param name The name of the handler
+   * @returns An object containing the handler function and its parameters
+   */
+  inspectHandler(name: string) {
+    return this.registry.inspectHandler(name);
+  }
+
+  private log(level: keyof LoggerLike, ...args: any[]) {
+    if (this.logger && this.logger[level]) {
+      this.logger[level]?.(...args);
     }
-
-    const fnStr = handler.fn.toString().replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, '');
-    // Match function ( { key1, key2 } ) or ( {key1, key2} )
-    const match = fnStr.match(/\{\s*([^}]*)\s*\}/);
-    if (!match || !match[1]) return { params: undefined, ...handler };
-    // Split by comma, trim spaces, remove default values
-    const params = match[1]
-      .split(',')
-      .map(k => k.split('=')[0]?.trim())
-      .filter(Boolean);
-
-    return { params, ...handler };
   }
 }
 

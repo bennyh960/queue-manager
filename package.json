@@ -1,19 +1,39 @@
 {
-  "name": "customqueuemanager",
+  "name": "queue-manager",
+  "description": "A flexible, TypeScript-first queue/task manager with pluggable backends ,dynamic persistence storage and event hooks.",
   "version": "1.0.0",
+  "keywords": [
+    "queue",
+    "task",
+    "typescript",
+    "job",
+    "manager",
+    "event-driven",
+    "repository",
+    "worker"
+  ],
   "type": "module",
   "main": "index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
-    "dev": "nodemon --exec \"tsc --noEmit && tsx src/server.ts\"",
+    "dev": "nodemon --exec \"tsc --noEmit && tsx src/index.ts\"",
     "dev:fast": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "build:watch": "tsc --watch",
     "start": "npm run build && node dist/index.js"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/node": "^24.1.0",
