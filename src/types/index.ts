@@ -1,23 +1,8 @@
-import { log } from 'console';
 import type { QueueRepository } from '../repositories/repository.interface.js';
 import type { TypeOf } from '../util/schema.util.js';
 import type { TaskSchema } from '../util/task.schema.js';
 
 export type HandlerMap = Record<string, (payload: any) => any>;
-
-// export type Task<H extends HandlerMap> = {
-//   id: number;
-//   handler: keyof H;
-//   payload: Parameters<H[keyof H]>[0];
-//   status: 'pending' | 'processing' | 'done' | 'failed' | 'deleted';
-//   log: string;
-//   createdAt: Date;
-//   updatedAt: Date;
-//   maxRetries?: number; // Optional per-task override
-//   maxProcessingTime?: number; // Optional per-task override (ms)
-//   retryCount: number; // Track retries
-//   priority?: number; //  Higher = more urgent
-// };
 
 type TaskSchemaBase = Omit<TypeOf<typeof TaskSchema>, 'handler' | 'payload'>;
 
@@ -29,8 +14,6 @@ type TaskFromSchemaAndHandler<H extends HandlerMap> = {
 }[keyof H];
 
 export type Task<H extends HandlerMap> = TaskFromSchemaAndHandler<H>;
-
-// export type Task<H extends HandlerMap> = TypeOf<typeof TaskSchema>;
 
 export type QueueManagerEvents<H extends HandlerMap> = {
   taskAdded: (task: Task<H>) => void;

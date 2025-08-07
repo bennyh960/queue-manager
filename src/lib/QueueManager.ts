@@ -334,7 +334,6 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     }
     const task = await this.repository.dequeue();
 
-    // TaskSchema.validateAll(task); // Validate the task against the schema
     return task ?? undefined;
   }
 

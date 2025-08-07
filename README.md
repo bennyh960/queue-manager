@@ -1,8 +1,324 @@
-# My Project
+# queue-manager
 
-Check out the [example folder](./examples/) for usage samples.
+A flexible, type-safe, and extensible task queue for Node.js and TypeScript.  
+Supports in-memory, file-based, and custom persistent backends.  
+Features handler registration, event-driven lifecycle, retries, priorities, and graceful worker
+management.
 
-## Examples
+---
 
-- [server Example File](./examples/server.txt)
-- [minimal 1](./examples/minimal.txt)
+## Features
+
+- **Type-safe task and payload binding** via TypeScript generics
+- **Pluggable storage**: in-memory, file, or custom repositories
+- **Event-driven**: listen to task lifecycle events
+- **Retries, priorities, stuck task detection**
+- **Singleton or multi-instance** queue management
+- **Customizable logging**
+- **Atomic dequeue for multi-process setups**
+
+---
+
+## Installation
+
+```bash
+npm install queue-manager
+```
+
+---
+
+## Quick Start
+
+### 1. Define Your Handlers
+
+```typescript
+const handlers = {
+  sendEmail: async ({ email }: { email: string }) => {
+    // ...send email logic
+  },
+  resizeImage: async ({ imageUrl }: { imageUrl: string }) => {
+    // ...resize logic
+  },
+};
+```
+
+### 2. Create a Queue Instance
+
+```typescript
+import QueueManager from 'queue-manager';
+
+const queue = QueueManager.getInstance<typeof handlers>({
+  backend: { type: 'file', filePath: './tasks.json' }, // or 'memory'
+  processType: 'single', // or 'multi-atomic'
+});
+```
+
+### 3. Register Handlers
+
+```typescript
+// register options will override instance `maxRetries` and `maxProcessingTime` for the particular handler
+queue.register('sendEmail', handlers.sendEmail, { maxRetries: 3, maxProcessingTime: 5000 });
+queue.register('resizeImage', handlers.resizeImage);
+```
+
+### 4. Add Tasks
+
+```typescript
+await queue.addTaskToQueue('resizeImage', { imageUrl: 'https://...' });
+// task options are optional but strongest , they  will override the handler options
+await queue.addTaskToQueue(
+  'sendEmail',
+  { email: 'test@example.com' },
+  { maxProcessingTime: 5000, maxRetries: 3, priority: 3 }
+);
+```
+
+### 5. Start the Worker
+
+```typescript
+queue.startWorker();
+```
+
+## API Reference
+
+### `QueueManager.getInstance(options)`
+
+- **Options:**
+  - `backend`: `{ type: 'file' | 'memory' | 'custom', ... }`
+  - `processType`: `'single'` (default) mean run only in 1 process or `'multi-atomic'` run on multi
+    instances
+  - `delay`: Polling interval in ms (default: 500)
+  - `logger`: Optional custom logger - support common loggers libraries
+  - `singleton`: Use singleton instance (default: true)
+  - `maxRetries`: Default max retries for tasks that failed or exceeding max processing time
+  - `maxProcessingTime`: Default max processing time for tasks
+
+---
+
+### `queue.register(name, handler, options?)`
+
+- Register a handler function for a task type.
+- **Parameters:**
+  - `name`: string — Handler name
+  - `handler`: function — Handler function `(payload) => Promise<any>`
+  - `options`: `{ maxRetries?: number, maxProcessingTime?: number }` (optional)
+
+---
+
+### `queue.addTaskToQueue(handler, payload, options?)`
+
+- Add a new task to the queue.
+- **Parameters:**
+  - `handler`: string — Name of the registered handler
+  - `payload`: object — Data for the handler (type-checked)
+  - `options`: `{ maxRetries?: number, maxProcessingTime?: number, priority?: number }` (optional)
+- **Returns:** `Promise<Task>`
+
+---
+
+### `queue.startWorker(concurrency = 1)`
+
+- Start processing tasks with the specified concurrency.
+- **Parameters:**
+  - `concurrency`: number (default: 1)
+
+---
+
+### `queue.stopWorker()`
+
+- Gracefully stop all workers.
+
+---
+
+### `queue.on(event, listener)`
+
+- Listen to task lifecycle events.
+- **Events:**
+  - `taskAdded`, `taskStarted`, `taskCompleted`, `taskFailed`, `taskRetried`, `taskRemoved`,
+    `taskStuck`
+- **Example:**
+  ```typescript
+  queue.on('taskCompleted', task => {
+    console.log('Task completed:', task);
+  });
+  ```
+
+---
+
+### `queue.getAllTasks(), queue.getTaskById(id)`
+
+- Inspect current tasks.
+
+### `Storage Backends`
+
+- Memory: Fast, non-persistent (lost on restart)
+- File: local JSON file-based, atomic writes
+- Custom: Plug in your own repository (e.g., Redis, MongoDB) - support `multi-atomic` , can safely
+  dequeue 1 task at the time.
+
+### `Type Safety`
+
+- Handlers and payloads are type-checked.
+- Task shape is inferred from your handler signatures.
+
+## Example: Custom Backend with PostgreSQL
+
+You can use a custom backend to integrate with any data store, such as PostgreSQL.  
+You are responsible for implementing atomic dequeue logic in your repository.  
+The queue-manager will use your repository's methods and only check that the returned values are
+valid.
+
+### PostgreSQL Table Schema Example
+
+Below is a minimal table definition for storing tasks in PostgreSQL.  
+You can adjust column types and add indexes as needed for your use case.
+
+```sql
+-- Code Generated by Sidekick is for learning and experimentation purposes only.
+CREATE TABLE tasks (
+  id TEXT PRIMARY KEY,
+  handler TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL, -- e.g., 'pending', 'processing', 'completed', 'failed'
+  log JSONB,
+  createdat TIMESTAMPTZ DEFAULT NOW(),
+  updatedat TIMESTAMPTZ DEFAULT NOW(),
+  maxretries INTEGER DEFAULT 3,
+  maxprocessingtime INTEGER, -- milliseconds
+  retrycount INTEGER DEFAULT 0,
+  priority INTEGER DEFAULT 0
+);
+
+-- Optional: Indexes for performance
+CREATE INDEX idx_tasks_status_priority ON tasks (status, priority DESC, createdat ASC);
+```
+
+Below is a minimal example using PostgreSQL and the `pg` npm package:
+
+```typescript
+import { Pool } from 'pg';
+import { CustomQueueRepository, QueueManager } from 'queue-manager';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+// Minimal implementation for PostgreSQL
+const customRepo = new CustomQueueRepository({
+  loadTasks: async () => {
+    const { rows } = await pool.query('SELECT * FROM tasks ORDER BY id ASC');
+    return rows;
+  },
+  saveTasks: async tasks => {
+    // This is a simple approach: delete all and re-insert.
+    // For production, use upserts or more efficient logic.
+    await pool.query('DELETE FROM tasks');
+    for (const task of tasks) {
+      await pool.query(
+        'INSERT INTO tasks (id, handler, payload, status, log, createdat, updatedat, maxretries, maxprocessingtime, retrycount, priority) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+        [
+          task.id,
+          task.handler,
+          JSON.stringify(task.payload),
+          task.status,
+          task.log,
+          task.createdAt,
+          task.updatedAt,
+          task.maxRetries,
+          task.maxProcessingTime,
+          task.retryCount,
+          task.priority,
+        ]
+      );
+    }
+    return tasks;
+  },
+  dequeue: async () => {
+    // Atomic dequeue: find the first pending task and mark as processing
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `SELECT * FROM tasks WHERE status = 'pending' ORDER BY priority DESC, createdat ASC LIMIT 1 FOR UPDATE SKIP LOCKED`
+      );
+      if (rows.length === 0) {
+        await client.query('COMMIT');
+        return null;
+      }
+      const task = rows[0];
+      await client.query(
+        `UPDATE tasks SET status = 'processing', updatedat = NOW() WHERE id = $1`,
+        [task.id]
+      );
+      await client.query('COMMIT');
+      return task;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+});
+
+const queue = QueueManager.getInstance<typeof handlers>({
+  backend: { type: 'custom', repository: customRepo },
+  processType: 'multi-atomic',
+});
+```
+
+---
+
+## Events
+
+You can listen to various lifecycle events emitted by the queue instance:
+
+| Event         | Listener Signature | Description                                 |
+| ------------- | ------------------ | ------------------------------------------- |
+| taskAdded     | (task)             | Fired when a new task is added              |
+| taskStarted   | (task)             | Fired when a task starts processing         |
+| taskCompleted | (task)             | Fired when a task completes successfully    |
+| taskFailed    | (task, error)      | Fired when a task handler throws an error   |
+| taskRetried   | (task)             | Fired when a task is retried                |
+| taskRemoved   | (task)             | Fired when a task is removed from the queue |
+| taskStuck     | (task)             | Fired when a task is detected as stuck      |
+
+**Example:**
+
+```typescript
+queue.on('taskCompleted', task => {
+  console.log('Task completed:', task);
+});
+```
+
+---
+
+## Advanced
+
+- **Graceful Shutdown:**  
+  Use `await queue.stopWorker()` to gracefully stop all workers and ensure no tasks are left in an
+  inconsistent state.
+
+- **Inspect Handlers:**  
+  Call `queue.inspectHandler('handlerName')` to retrieve metadata and configuration details about a
+  registered handler.
+
+- **Custom Logger:**  
+  Provide a custom logger by passing a `LoggerLike` object to the `logger` option when initializing
+  the queue. This allows you to integrate with your preferred logging solution.
+
+---
+
+## License
+
+MIT
+
+---
+
+## Contributing
+
+Pull requests and issues are welcome!  
+If you have suggestions, bug reports, or want to contribute new features, please open an issue or
+submit a PR.
+
+---
