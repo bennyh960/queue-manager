@@ -3,7 +3,15 @@ import type { QueueRepository } from '../repositories/repository.interface.js';
 import { FileQueueRepository } from '../repositories/file.repository.js';
 import { MemoryQueueRepository } from '../repositories/memory.repository.js';
 import { EventEmitter } from 'events';
-import type { HandlerMap, LoggerLike, QueueBackendConfig, QueueManagerEvents, Task } from '../types/index.js';
+import {
+  type HandlerMap,
+  type IQueueManager,
+  type LoggerLike,
+  type ProcessType,
+  type QueueBackendConfig,
+  type QueueManagerEvents,
+  type Task,
+} from '../types/index.js';
 import { DefaultLogger } from '../util/logger.js';
 
 const singletonRegistry = new HandlerRegistry();
@@ -67,6 +75,14 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
   // single process concurrency lock.but for multiple processes -  need atomic update in storage backend.
   private dequeueLock = false;
 
+  // is the queue can run only on one process/server or can be run on multiple processes/servers.
+  // This is used to determine how the queue manager should handle task processing.
+  // if 'multi-atomic', it means the queue can be processed by multiple instances so the responsibility of atomic dequeueing is on the storage backend.
+  // if 'single', it means the queue can only be processed by a single instance at a time - the library handle atomic dequeue.
+  processType: ProcessType;
+
+  backend: QueueBackendConfig;
+
   private readonly logger: LoggerLike | undefined;
 
   public override on<K extends keyof QueueManagerEvents<H>>(event: K, listener: QueueManagerEvents<H>[K]): this {
@@ -77,14 +93,16 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     return super.emit(event, ...args);
   }
 
-  private constructor(
-    repository: QueueRepository<Task<H>>,
-    delay: number = 500,
-    singleton: boolean = true,
-    maxRetries: number = MAX_RETRIES,
-    maxProcessingTime: number = MAX_PROCESSING_TIME, // 10 minutes default
-    logger: LoggerLike = new DefaultLogger()
-  ) {
+  private constructor({
+    processType,
+    delay = 500,
+    singleton = true,
+    maxRetries = MAX_RETRIES,
+    maxProcessingTime = MAX_PROCESSING_TIME,
+    logger = new DefaultLogger(),
+    backend,
+    repository,
+  }: IQueueManager<H>) {
     super();
     this.repository = repository;
     this.delay = delay;
@@ -92,6 +110,8 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     this.MAX_RETRIES = maxRetries;
     this.MAX_PROCESSING_TIME = maxProcessingTime;
     this.logger = logger; // Optional logger, can be used for logging events
+    this.processType = processType;
+    this.backend = backend;
   }
 
   /**
@@ -100,12 +120,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
    * If `singleton` is false, it creates a new instance each time.
    * @param args Configuration for the queue manager
    */
-  public static getInstance<H extends HandlerMap>(args: {
-    backend: QueueBackendConfig;
-    delay?: number;
-    singleton?: boolean;
-    logger?: LoggerLike;
-  }): QueueManager<H> {
+  public static getInstance<H extends HandlerMap>(args: Omit<IQueueManager<H>, 'repository'>): QueueManager<H> {
     const repository: QueueRepository<Task<H>> = this.getBackendRepository(args.backend);
 
     const isSingleton = args.singleton !== false; // default to singleton
@@ -113,16 +128,32 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
 
     if (isSingleton) {
       if (!QueueManager.instance) {
-        QueueManager.instance = new QueueManager(repository, delay, true, MAX_RETRIES, MAX_PROCESSING_TIME, args.logger);
-      } else {
+        QueueManager.instance = new QueueManager({
+          repository,
+          backend: args.backend,
+          delay,
+          processType: args.processType,
+          singleton: true,
+          maxRetries: MAX_RETRIES,
+          maxProcessingTime: MAX_PROCESSING_TIME,
+          logger: args.logger,
+        });
+      } else if (QueueManager.instance.repository !== repository) {
         // Optional: warn if repository is different from the original
-        if (QueueManager.instance.repository !== repository) {
-          QueueManager.instance.log('warn', 'Different repository detected for singleton instance');
-        }
+        QueueManager.instance.log('warn', 'Different repository detected for singleton instance');
       }
       return QueueManager.instance as QueueManager<H>;
     }
-    return new QueueManager(repository, delay, false, MAX_RETRIES, MAX_PROCESSING_TIME, args.logger);
+    return new QueueManager({
+      repository,
+      delay,
+      singleton: false,
+      backend: args.backend,
+      maxRetries: MAX_RETRIES,
+      maxProcessingTime: MAX_PROCESSING_TIME,
+      logger: args.logger,
+      processType: args.processType,
+    });
   }
 
   /**
@@ -131,12 +162,12 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
    * based on the backend type specified in the configuration.
    * @param backend Configuration for the queue backend
    */
-  private static getBackendRepository<H extends HandlerMap>(backend: QueueBackendConfig): QueueRepository<Task<H>> {
+  private static getBackendRepository<H extends HandlerMap>(backend: QueueBackendConfig): QueueRepository<Task<HandlerMap>> {
     switch (backend.type) {
       case 'file':
-        return new FileQueueRepository<Task<H>>(backend.filePath);
+        return new FileQueueRepository<Task<HandlerMap>>(backend.filePath);
       case 'memory':
-        return new MemoryQueueRepository<Task<H>>();
+        return new MemoryQueueRepository<Task<HandlerMap>>();
       case 'custom':
         return backend.repository;
       default:
@@ -178,7 +209,19 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
    * This method saves the current in-memory task array to the persistent storage backend.
    */
   private async saveTasks() {
-    await this.repository.saveTasks(this.tasks);
+    const taskResponse = await this.repository.saveTasks(this.tasks);
+    if (taskResponse && !Array.isArray(taskResponse)) {
+      throw new Error('Failed to save tasks to repository: expected an array response');
+    }
+
+    if (taskResponse && taskResponse.length && typeof taskResponse[0] !== 'object') {
+      throw new Error('Failed to save tasks to repository: expected an array of task objects');
+    }
+
+    if (!taskResponse && this.backend.type === 'custom') {
+      throw new Error('Failed to save tasks to repository: custom repository did not return tasks');
+    }
+    this.tasks = taskResponse;
   }
 
   /**
@@ -192,7 +235,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
   async addTaskToQueue<K extends keyof H>(
     handler: K,
     payload: Parameters<H[K]>[0],
-    options?: { maxRetries?: number; maxProcessingTime?: number }
+    options?: { maxRetries?: number; maxProcessingTime?: number; priority?: number }
   ): Promise<Task<H>> {
     if (!this.initialized) {
       await this.init();
@@ -203,7 +246,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     const task: Task<H> = {
       id: this.nextId++,
       payload,
-      handler,
+      handler: handler as string,
       status: 'pending',
       log: '',
       createdAt: new Date(),
@@ -211,6 +254,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
       maxRetries: options?.maxRetries ?? handlerEntry?.options?.maxRetries ?? this.MAX_RETRIES,
       maxProcessingTime: options?.maxProcessingTime ?? handlerEntry?.options?.maxProcessingTime ?? this.MAX_PROCESSING_TIME,
       retryCount: 0,
+      priority: options?.priority ?? 0, //todo: bug with schema optional/default should not show ts error
     };
     this.tasks.push(task);
     await this.saveTasks();
@@ -250,12 +294,11 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
   };
 
   /**
-   * Dequeue a task from the queue.
-   * This method finds the next pending task, marks it as processing, and returns it.
-   * It also saves the updated task list to the repository.
-   * If no pending tasks are found, it returns undefined.
+   * Single dequeue method for 'single' process type.
+   * This method ensures that only one task is dequeued at a time,
+   * and it handles the dequeue lock internally.
    */
-  async dequeue(): Promise<Task<H> | undefined> {
+  private async singleDequeue(): Promise<Task<H> | undefined> {
     if (this.dequeueLock) return undefined;
     this.dequeueLock = true;
 
@@ -270,6 +313,46 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     } finally {
       this.dequeueLock = false;
     }
+  }
+
+  // Multi-process dequeue method for 'multi-atomic' process type.
+  // This method is designed to be used with a custom backend that supports atomic dequeueing.
+  // It assumes that the repository has a `dequeue` method that handles atomic dequeueing.
+  // If the backend does not support this, it will throw an error.
+  private async multiProcessDequeue(): Promise<Task<H> | undefined> {
+    if (this.backend.type !== 'custom') {
+      this.log(
+        'warn',
+        'Multi-process dequeue is only required with custom backend storage, please use "single" process type instead if you don\'t want to create your own dequeue logic.'
+      );
+    }
+
+    if (typeof this.repository.dequeue !== 'function') {
+      throw new Error(
+        'processType is set to "multi-atomic": your repository must implement an atomic dequeueTask() method. See documentation.'
+      );
+    }
+    const task = await this.repository.dequeue();
+
+    // TaskSchema.validateAll(task); // Validate the task against the schema
+    return task ?? undefined;
+  }
+
+  /**
+   * Dequeue a task from the queue.
+   * This method finds the next pending task, marks it as processing, and returns it.
+   * It also saves the updated task list to the repository.
+   * If no pending tasks are found, it returns undefined.
+   */
+  async dequeue(): Promise<Task<H> | undefined> {
+    // If the process type is 'multi-atomic', we assume the backend handles atomic dequeueing.
+    if (this.processType === 'multi-atomic' || this.backend.type === 'custom') {
+      return await this.multiProcessDequeue();
+    }
+
+    // If the process type is 'single', we handle atomic dequeueing ourselves.
+    // This prevents multiple workers that run concurrently  from dequeuing tasks at the same time.
+    return await this.singleDequeue();
   }
 
   getAllTasks(): Task<H>[] {

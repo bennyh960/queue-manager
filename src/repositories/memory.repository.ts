@@ -7,7 +7,8 @@ export class MemoryQueueRepository<T> implements QueueRepository<T> {
     return this.tasks;
   }
 
-  async saveTasks(tasks: T[]): Promise<void> {
+  async saveTasks(tasks: T[]): Promise<T[]> {
     this.tasks = tasks;
+    return tasks;
   }
 }

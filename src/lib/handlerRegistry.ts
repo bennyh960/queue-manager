@@ -4,7 +4,7 @@ type HandlerOptions = {
   maxProcessingTime?: number;
 };
 
-type HandlerWithOptions = {
+export type HandlerWithOptions = {
   fn: (payload: any) => any;
   options?: HandlerOptions;
 };
