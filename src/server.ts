@@ -70,6 +70,7 @@ queue.register('sendEmail', sendEmail, {
     }
   },
 });
+
 queue.register('resizeImage', resizeImage, {
   paramSchema: payload => {
     if (!payload.imageUrl) {
@@ -124,6 +125,20 @@ app.get('/tasks', async (req, res) => {
     );
   });
   res.status(200).json({ message: 'Tasks retrieved', total: filteredTasks.length, tasks: filteredTasks });
+});
+
+app.post('/worker', async (req, res) => {
+  const { action } = req.body;
+
+  if (action === 'start') {
+    queue.startWorker();
+    res.status(200).json({ message: 'Worker started' });
+  } else if (action === 'stop') {
+    queue.stopWorker();
+    res.status(200).json({ message: 'Worker stopped' });
+  } else {
+    res.status(400).json({ message: 'Invalid action' });
+  }
 });
 
 app.post('/task/update', async (req, res) => {

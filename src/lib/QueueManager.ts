@@ -83,6 +83,8 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
 
   backend: QueueBackendConfig;
 
+  crashOnWorkerError = false;
+
   private readonly logger: LoggerLike | undefined;
 
   public override on<K extends keyof QueueManagerEvents<H>>(event: K, listener: QueueManagerEvents<H>[K]): this {
@@ -102,6 +104,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     logger = new DefaultLogger(),
     backend,
     repository,
+    crashOnWorkerError,
   }: IQueueManager<H>) {
     super();
     this.repository = repository;
@@ -112,6 +115,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     this.logger = logger; // Optional logger, can be used for logging events
     this.processType = processType;
     this.backend = backend;
+    this.crashOnWorkerError = crashOnWorkerError ?? false;
   }
 
   /**
@@ -137,6 +141,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
           maxRetries: MAX_RETRIES,
           maxProcessingTime: MAX_PROCESSING_TIME,
           logger: args.logger,
+          crashOnWorkerError: args.crashOnWorkerError,
         });
       } else if (QueueManager.instance.repository !== repository) {
         // Optional: warn if repository is different from the original
@@ -153,6 +158,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
       maxProcessingTime: MAX_PROCESSING_TIME,
       logger: args.logger,
       processType: args.processType,
+      crashOnWorkerError: args.crashOnWorkerError,
     });
   }
 
@@ -237,10 +243,6 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     payload: Parameters<H[K]>[0],
     options?: { maxRetries?: number; maxProcessingTime?: number; priority?: number }
   ): Promise<Task<H>> {
-    if (!this.initialized) {
-      await this.init();
-    }
-
     const handlerEntry = this.registry.get(handler as string);
 
     const task: Task<H> = {
@@ -494,7 +496,12 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
         const log = err?.message?.toString() || 'Unknown error';
         this.updateTaskStatus(task.id, 'failed', log);
         const emitError = err instanceof Error ? err : new Error(String(err));
-        this.emit('taskFailed', task, emitError);
+        if (this.crashOnWorkerError) {
+          this.workerActive = false;
+          throw emitError;
+        } else {
+          this.emit('taskFailed', task, emitError);
+        }
       }
     }
   }

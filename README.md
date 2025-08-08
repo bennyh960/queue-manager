@@ -92,6 +92,8 @@ queue.startWorker();
   - `singleton`: Use singleton instance (default: true)
   - `maxRetries`: Default max retries for tasks that failed or exceeding max processing time
   - `maxProcessingTime`: Default max processing time for tasks
+  - `crashOnWorkerError`: if `true` it will stop the worker and throw the error (no event emission)
+    else Emit the taskFailed event for external handlers.. (default: false)
 
 ---
 

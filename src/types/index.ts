@@ -50,4 +50,5 @@ export interface IQueueManager<H extends HandlerMap> {
   maxProcessingTime?: number;
   logger?: LoggerLike;
   backend: QueueBackendConfig;
+  crashOnWorkerError?: boolean; // If true, crashes the worker on error
 }

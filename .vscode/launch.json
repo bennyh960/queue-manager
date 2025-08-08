@@ -14,6 +14,16 @@
       "type": "node",
       "console": "integratedTerminal"
     },
+    {
+      "name": "Launch via NPM - SERVER",
+      "request": "launch",
+      "runtimeArgs": ["run", "server:dev"],
+      "runtimeExecutable": "npm",
+      "program": "${workspaceFolder}/src/server.ts",
+      "skipFiles": ["<node_internals>/**"],
+      "type": "node",
+      "console": "integratedTerminal"
+    },
 
     {
       "type": "node",
