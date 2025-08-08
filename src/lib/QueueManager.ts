@@ -13,6 +13,8 @@ import {
   type Task,
 } from '../types/index.js';
 import { DefaultLogger } from '../util/logger.js';
+import { warnings } from '../util/warnings.js';
+import { errors } from '../util/errors.js';
 
 const singletonRegistry = new HandlerRegistry();
 
@@ -116,6 +118,12 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     this.processType = processType;
     this.backend = backend;
     this.crashOnWorkerError = crashOnWorkerError ?? false;
+
+    if (backend.type !== 'custom' && processType === 'multi-atomic') {
+      throw new Error(errors.backendTypeAndProcessTypeConflictError.replace(/\$1/g, backend.type));
+    } else if (backend.type === 'custom') {
+      this.log('warn', warnings.atomicProcessWarning);
+    }
   }
 
   /**
@@ -331,10 +339,7 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
   // If the backend does not support this, it will throw an error.
   private async multiProcessDequeue(): Promise<Task<H> | undefined> {
     if (this.backend.type !== 'custom') {
-      this.log(
-        'warn',
-        'Multi-process dequeue is only required with custom backend storage, please use "single" process type instead if you don\'t want to create your own dequeue logic.'
-      );
+      this.log('warn', 'Multi-process dequeue is only required with custom backend storage.)');
     }
 
     if (typeof this.repository.dequeue !== 'function') {
@@ -516,15 +521,8 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
    */
   register<K extends keyof H>(name: K, handler: H[K], options?: HandlerOptions<Parameters<H[K]>[0]>) {
     if (!options || (!options.paramSchema && !options.useAutoSchema)) {
-      this.log(
-        'warn',
-        `\n==============================================================================================================
-    WARNING: Handler "${name as string}" was registered without a parameter schema or auto-schema.
-    --------------------------------------------------------------------------------
-    - If this handler does not expect a payload, you can safely ignore this warning.
-    - If it does expect a payload, omitting a schema may allow invalid or unexpected data to be enqueued.
-    - To ensure payload validation, provide a paramSchema or enable useAutoSchema when registering the handler.\n===============================================================================================================`
-      );
+      const warningMessage = warnings.handlerRegistryWarning.replace(/\$1/g, name as string);
+      this.log('warn', warningMessage);
     }
     this.registry.register(name as string, handler, options);
   }

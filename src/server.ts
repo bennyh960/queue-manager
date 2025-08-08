@@ -42,8 +42,11 @@ const dbRepo = new CustomQueueRepository({
   dequeue: async () => null,
 });
 
-// const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'custom', repository: dbRepo }, processType: 'single' });
-const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'file', filePath: './data/tasks.json' }, processType: 'single' });
+const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'custom', repository: dbRepo }, processType: 'single' });
+// const queue = QueueManager.getInstance<HandlerMap>({
+//   backend: { type: 'file', filePath: './data/tasks.json' },
+//   processType: 'multi-atomic',
+// });
 queue.register('doSomething', doSomething);
 queue.register('sendEmail', sendEmail, {
   maxRetries: 3,
