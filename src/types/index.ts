@@ -2,7 +2,7 @@ import type { QueueRepository } from '../repositories/repository.interface.js';
 import type { TypeOf } from '../util/schema.util.js';
 import type { TaskSchema } from '../util/task.schema.js';
 
-export type HandlerMap = Record<string, (payload: any) => any>;
+export type HandlerMap = Record<string, (payload: any) => any | Promise<any>>;
 
 type TaskSchemaBase = Omit<TypeOf<typeof TaskSchema>, 'handler' | 'payload'>;
 
@@ -22,6 +22,7 @@ export type QueueManagerEvents<H extends HandlerMap> = {
   taskFailed: (task: Task<H>, error: Error) => void;
   taskRetried: (task: Task<H>) => void;
   taskRemoved: (task: Task<H>) => void;
+  tasksPurged: (tasks: Task<H>[]) => void;
   taskStuck: (task: Task<H>) => void;
 };
 

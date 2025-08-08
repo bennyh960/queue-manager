@@ -43,7 +43,6 @@ export class HandlerRegistry<H extends HandlerMap> {
     } else if (handler.options?.useAutoSchema) {
       const { params } = this.autoInspectHandlerParams(name);
       if (!params) {
-        console.log(params);
         return { isValid: false, message: 'Invalid payload - must contain parameters or empty object {}', source: 'auto-schema' };
       }
       for (const key of params) {
@@ -63,7 +62,6 @@ export class HandlerRegistry<H extends HandlerMap> {
     }
 
     const fnStr = handler.fn.toString().replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, '');
-    console.log(fnStr);
     // Match function ( { key1, key2 } ) or ( {key1, key2} )
     const match = fnStr.match(/\{\s*([^}]*)\s*\}/);
     if (!match || !match[1]) {

@@ -26,6 +26,7 @@
   ],
   "scripts": {
     "dev": "nodemon --exec \"tsc --noEmit && tsx src/index.ts\"",
+    "server:dev": "nodemon --config nodemon.server.json",
     "dev:fast": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
     "prepublishOnly": "npm run build",

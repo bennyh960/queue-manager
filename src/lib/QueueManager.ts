@@ -1,4 +1,4 @@
-import { HandlerRegistry } from './handlerRegistry.js';
+import { HandlerRegistry, type HandlerOptions } from './handlerRegistry.js';
 import type { QueueRepository } from '../repositories/repository.interface.js';
 import { FileQueueRepository } from '../repositories/file.repository.js';
 import { MemoryQueueRepository } from '../repositories/memory.repository.js';
@@ -283,6 +283,14 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
     }
   }
 
+  public async purgeDeletedTasks() {
+    const tasksToPurge = this.tasks.filter(task => task.status === 'deleted');
+    this.tasks = this.tasks.filter(task => task.status !== 'deleted');
+    await this.saveTasks();
+    this.emit('tasksPurged', tasksToPurge);
+    this.log('info', 'Purged deleted tasks from the queue');
+  }
+
   /**
    * Sort tasks by priority and creation date.
    * This method sorts tasks based on their priority and creation date.
@@ -499,12 +507,19 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
    * @param handler The function to execute for this handler
    * @param options Optional parameters for max retries and processing time
    */
-  register<K extends string, F extends (payload: any) => any>(
-    name: K,
-    handler: F,
-    options?: { maxRetries?: number; maxProcessingTime?: number }
-  ) {
-    this.registry.register(name, handler, options);
+  register<K extends keyof H>(name: K, handler: H[K], options?: HandlerOptions<Parameters<H[K]>[0]>) {
+    if (!options || (!options.paramSchema && !options.useAutoSchema)) {
+      this.log(
+        'warn',
+        `\n==============================================================================================================
+    WARNING: Handler "${name as string}" was registered without a parameter schema or auto-schema.
+    --------------------------------------------------------------------------------
+    - If this handler does not expect a payload, you can safely ignore this warning.
+    - If it does expect a payload, omitting a schema may allow invalid or unexpected data to be enqueued.
+    - To ensure payload validation, provide a paramSchema or enable useAutoSchema when registering the handler.\n===============================================================================================================`
+      );
+    }
+    this.registry.register(name as string, handler, options);
   }
 
   /**
@@ -514,8 +529,8 @@ export class QueueManager<H extends HandlerMap> extends EventEmitter {
    * @param name The name of the handler
    * @returns An object containing the handler function and its parameters
    */
-  inspectHandler(name: string) {
-    return this.registry.inspectHandler(name);
+  validateHandlerParams(name: string, payload: any) {
+    return this.registry.validateParams(name, payload);
   }
 
   private log(level: keyof LoggerLike, ...args: any[]) {

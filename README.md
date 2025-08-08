@@ -99,11 +99,14 @@ queue.startWorker();
 
 - Register a handler function for a task type.
 - **Parameters:**
-  - `name`: string — Handler name
-  - `handler`: function — Handler function `(payload) => Promise<any>`
-  - `options`: `{ maxRetries?: number, maxProcessingTime?: number }` (optional)
 
----
+  - `name`: string — Handler name
+  - `handler`: function — Handler function `(payload) => any`
+  - `options`:
+    `{ maxRetries?: number, maxProcessingTime?: number ,useAuthoSchema?:boolean, paramSchema:(payload:any)=>{isValid:boolean,message:string|null , source:string} }`
+    (optional)
+
+  **_See [register](examples/handlerRegister.md) for usage examples._**
 
 ### `queue.addTaskToQueue(handler, payload, options?)`
 

@@ -16,7 +16,7 @@ interface MiniSchemaOptions {
   strict?: boolean;
 }
 
-class ValidationError extends Error {
+export class ValidationError extends Error {
   errors: any[];
   constructor(errors: any[]) {
     super('Validation failed');

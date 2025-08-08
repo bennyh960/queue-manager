@@ -2,6 +2,7 @@ import express from 'express';
 import QueueManager from './lib/QueueManager.js';
 import type { Task } from './types/index.js';
 import { CustomQueueRepository } from './repositories/custom.repository.js';
+import { MiniSchema as M, ValidationError } from './util/schema.util.js';
 
 export async function sendEmail({ email }: { email: string }) {
   if (!email) {
@@ -18,9 +19,16 @@ export async function resizeImage({ imageUrl }: { imageUrl: string }) {
   console.log(`Image resized: ${imageUrl}`);
 }
 
+function doSomething() {
+  console.log('Doing something...');
+  // Simulate some processing
+  // return new Promise(resolve => setTimeout(resolve, 1000));
+}
+
 export type HandlerMap = {
   sendEmail: ({ email }: { email: string }) => Promise<void>;
   resizeImage: ({ imageUrl }: { imageUrl: string }) => Promise<void>;
+  doSomething: () => void;
 };
 
 const app = express();
@@ -34,29 +42,56 @@ const dbRepo = new CustomQueueRepository({
   dequeue: async () => null,
 });
 
-const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'custom', repository: dbRepo }, processType: 'single' });
-// const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'file', filePath: './data/tasks2.json' }, processType: 'single' });
-queue.register('sendEmail', sendEmail, { maxRetries: 3, maxProcessingTime: 2000 });
-queue.register('resizeImage', resizeImage);
+// const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'custom', repository: dbRepo }, processType: 'single' });
+const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'file', filePath: './data/tasks.json' }, processType: 'single' });
+queue.register('doSomething', doSomething);
+queue.register('sendEmail', sendEmail, {
+  maxRetries: 3,
+  maxProcessingTime: 2000,
+  useAutoSchema: true,
+  paramSchema: payload => {
+    try {
+      const EmailSchema = M.object({
+        email: M.regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email format'),
+        to: M.string(),
+      });
+
+      EmailSchema.validateAll(payload);
+
+      return { isValid: true, message: null, source: 'auto-schema' };
+    } catch (error: any) {
+      const errors = error instanceof ValidationError ? error.errors : [{ path: 'unknown', message: JSON.stringify(error) }];
+
+      return {
+        isValid: false,
+        message: errors.map(e => e.message).join(', '),
+        source: 'auto-schema',
+      };
+    }
+  },
+});
+queue.register('resizeImage', resizeImage, {
+  paramSchema: payload => {
+    if (!payload.imageUrl) {
+      return { isValid: false, message: 'imageUrl is required', source: 'param-schema' };
+    }
+    const isValid = typeof payload.imageUrl === 'string';
+    return { isValid, message: isValid ? null : 'Invalid imageUrl' };
+  },
+});
 queue.startWorker();
+
+queue.addTaskToQueue('resizeImage', { imageUrl: 'sda' }, {});
 
 // Add a task to the queue
 app.post('/tasks', async (req, res) => {
-  const { fn, params } = queue.inspectHandler(req.body.handler);
+  const { isValid, message, source } = queue.validateHandlerParams(req.body.handler, req.body.payload);
 
-  if (!fn) {
-    return res.status(400).json({ message: `Handler ${req.body.handler} is not registered` });
-  }
-  if (!req.body.payload) {
-    return res.status(400).json({ message: 'Payload is required' });
-  }
-  for (const key of params || []) {
-    const isValid = req.body.payload.hasOwnProperty(key);
-    if (!isValid) {
-      return res.status(400).json({ message: `Payload is missing required parameter: ${key}` });
-    }
+  if (!isValid) {
+    return res.status(400).json({ message, source });
   }
 
+  // queue.addTaskToQueue("resizeImage",{imageUrl:""})
   const task = await queue.addTaskToQueue(req.body.handler, req.body.payload, { maxRetries: 3, maxProcessingTime: 2000 });
   res.status(201).json({ message: 'Task added', task });
 });
