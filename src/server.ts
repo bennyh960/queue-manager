@@ -42,11 +42,11 @@ const dbRepo = new CustomQueueRepository({
   dequeue: async () => null,
 });
 
-const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'custom', repository: dbRepo }, processType: 'single' });
-// const queue = QueueManager.getInstance<HandlerMap>({
-//   backend: { type: 'file', filePath: './data/tasks.json' },
-//   processType: 'multi-atomic',
-// });
+// const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'custom', repository: dbRepo }, processType: 'single' });
+const queue = QueueManager.getInstance<HandlerMap>({
+  backend: { type: 'file', filePath: './data/tasks.json' },
+  processType: 'single',
+});
 queue.register('doSomething', doSomething);
 queue.register('sendEmail', sendEmail, {
   maxRetries: 3,
@@ -131,13 +131,13 @@ app.get('/tasks', async (req, res) => {
 });
 
 app.post('/worker', async (req, res) => {
-  const { action } = req.body;
+  const { action, concurrency } = req.body;
 
   if (action === 'start') {
-    queue.startWorker();
+    await queue.startWorker(concurrency);
     res.status(200).json({ message: 'Worker started' });
   } else if (action === 'stop') {
-    queue.stopWorker();
+    await queue.stopWorker();
     res.status(200).json({ message: 'Worker stopped' });
   } else {
     res.status(400).json({ message: 'Invalid action' });

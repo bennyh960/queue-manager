@@ -1,4 +1,4 @@
-import type { HandlerMap, Task, QueueManagerEvents, LoggerLike } from '../types/index.js';
+import type { HandlerMap, LoggerLike } from '../types/index.js';
 import type QueueManager from './QueueManager.js';
 
 export class QueueWorker<H extends HandlerMap> {
@@ -27,6 +27,26 @@ export class QueueWorker<H extends HandlerMap> {
     this.log('info', 'Worker stopped');
   }
 
+  /**
+   * Queue worker function.
+   * This function runs in a loop, dequeuing tasks and processing them.
+   * It handles task execution, error handling, and task status updates.
+   * * It emits events for task lifecycle changes such as task started, completed, failed, retried, and removed.
+   * * It also checks for stuck tasks and handles them accordingly.
+   * * @remarks
+   * This method is designed to be run in a loop, continuously processing tasks from the queue.
+   * * It will keep running until `workerActive` is set to false, allowing for graceful shutdowns.
+   * * @returns A promise that resolves when the worker stops processing tasks.
+   * * @throws Error if the handler for a task is not found.
+   * * @example
+   * ```typescript
+   * const queue = QueueManager.getInstance<HandlerMap>({ backend: { type: 'file', filePath: './data/tasks.json' } });
+   * queue.register('sendEmail', sendEmail, { maxRetries: 3, maxProcessingTime: 2000 });
+   * queue.register('resizeImage', resizeImage);
+   * queue.startWorker();
+   *
+   *
+   * */
   private async queueWorker() {
     if (!this.queueManager['initialized']) {
       await this.queueManager['init']();
@@ -36,6 +56,7 @@ export class QueueWorker<H extends HandlerMap> {
       if (!task) {
         await new Promise(res => setTimeout(res, this.queueManager['delay']));
         await this.queueManager.checkAndHandleStuckTasks();
+        // console.log('No task found, waiting...');
         continue;
       }
       try {
