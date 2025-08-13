@@ -17,7 +17,7 @@
     {
       "name": "Launch via NPM - SERVER",
       "request": "launch",
-      "runtimeArgs": ["run", "server:dev"],
+      "runtimeArgs": ["run", "dev:server"],
       "runtimeExecutable": "npm",
       "program": "${workspaceFolder}/src/server.ts",
       "skipFiles": ["<node_internals>/**"],

@@ -1,7 +1,7 @@
 import { MiniSchema as M } from '../util/schema.util.js';
 
 export const TaskSchema = M.object({
-  id: M.number(),
+  id: M.string(),
   handler: M.string(),
   payload: M.objectAny(),
   status: M.enum(['pending', 'processing', 'done', 'failed', 'deleted']),

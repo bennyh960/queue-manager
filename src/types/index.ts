@@ -1,3 +1,4 @@
+import type { Redis } from 'ioredis';
 import type { QueueRepository } from '../repositories/repository.interface.js';
 import type { TypeOf } from '../util/schema.util.js';
 import type { TaskSchema } from '../util/task.schema.js';
@@ -29,7 +30,8 @@ export type QueueManagerEvents<H extends HandlerMap> = {
 export type QueueBackendConfig =
   | { type: 'file'; filePath: string }
   | { type: 'memory' }
-  | { type: 'custom'; repository: QueueRepository<Task<HandlerMap>> };
+  | { type: 'redis'; redisClient: Redis; storageName?: string }
+  | { type: 'custom'; repository: QueueRepository };
 
 // util
 export interface LoggerLike {
@@ -41,8 +43,8 @@ export interface LoggerLike {
 
 export type ProcessType = 'single' | 'multi-atomic';
 
-export interface IQueueManager<H extends HandlerMap> {
-  repository: QueueRepository<Task<H>>;
+export interface IQueueManager {
+  repository: QueueRepository;
   processType: ProcessType;
   delay?: number;
   singleton?: boolean;
@@ -52,3 +54,8 @@ export interface IQueueManager<H extends HandlerMap> {
   backend: QueueBackendConfig;
   crashOnWorkerError?: boolean; // If true, crashes the worker on error
 }
+
+export type EmitMethod = <K extends keyof QueueManagerEvents<HandlerMap>>(
+  event: K,
+  ...args: Parameters<QueueManagerEvents<HandlerMap>[K]>
+) => boolean;

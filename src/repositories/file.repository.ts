@@ -1,29 +1,36 @@
-import type { QueueRepository } from './repository.interface.js';
+import type { HandlerMap, Task } from '../types/index.js';
 import fs from 'fs/promises';
 import path from 'path';
+import { BaseQueueRepository } from './base.repositury.js';
 
-export class FileQueueRepository<T> implements QueueRepository<T> {
-  constructor(private readonly filePath: string) {}
+export class FileQueueRepository extends BaseQueueRepository {
+  constructor(private readonly filePath: string, maxRetries: number, maxProcessingTime: number) {
+    super(maxRetries, maxProcessingTime);
+  }
 
-  async loadTasks(): Promise<T[]> {
+  // Load tasks from file, optionally filter by status
+  async loadTasks(status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]> {
     try {
       if (path.extname(this.filePath) !== '.json') {
         throw new Error('File path must end with .json');
       }
       const data = await fs.readFile(this.filePath, 'utf-8');
-      return JSON.parse(data || '[]');
+      const tasks: Task<HandlerMap>[] = JSON.parse(data || '[]');
+      if (status) {
+        return tasks.filter(t => t.status === status);
+      }
+      return tasks;
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
       if (error.code === 'ENOENT') {
-        throw new Error(
-          `Error loading tasks from ${this.filePath}.\n The ${error.path} does not exist.\nPlease create the directory first`
-        );
+        throw new Error(`Error loading tasks from ${this.filePath}.\nThe ${error.path} does not exist.\nPlease create the directory first`);
       }
       throw new Error('Error loading tasks from file: ' + error.message);
     }
   }
 
-  async saveTasks(tasks: T[]): Promise<T[]> {
+  // Save all tasks to file (ignore status param for file)
+  async saveTasks(tasks: Task<HandlerMap>[], _status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]> {
     try {
       const tmpPath = this.filePath + '.tmp';
       const dir = path.dirname(tmpPath);
@@ -35,5 +42,12 @@ export class FileQueueRepository<T> implements QueueRepository<T> {
       console.error('Error saving tasks to file:', error);
       throw error;
     }
+  }
+
+  // Add a new task to the file
+  async enqueue(task: Task<HandlerMap>): Promise<void> {
+    const tasks = await this.loadTasks();
+    tasks.push(task);
+    await this.saveTasks(tasks);
   }
 }

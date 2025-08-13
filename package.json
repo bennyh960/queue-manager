@@ -26,28 +26,31 @@
   ],
   "scripts": {
     "dev": "nodemon --exec \"tsc --noEmit && tsx src/index.ts\"",
-    "server:dev": "nodemon --config nodemon.server.json",
+    "dev:server": "nodemon --config nodemon.server.json",
     "dev:fast": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "build:watch": "tsc --watch",
     "start": "npm run build && node dist/index.js",
+    "redis:ui": "npm run redis-commander",
     "test": "jest"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@jest/globals": "^30.0.5",
+    "@tsconfig/node20": "^20.1.6",
     "@types/express": "^5.0.3",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.1.0",
+    "@types/node": "^24.2.1",
     "jest": "^30.0.5",
     "nodemon": "^3.1.10",
     "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.3",
+    "ioredis": "^5.7.0",
+    "express": "^5.1.0",
     "typescript": "^5.9.2"
   },
-  "dependencies": {
-    "express": "^5.1.0"
-  }
+  "dependencies": {}
 }
