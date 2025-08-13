@@ -1,7 +1,13 @@
 {
-  "name": "queue-manager",
+  "name": "queue-manager-pro",
   "description": "A flexible, TypeScript-first queue/task manager with pluggable backends ,dynamic persistence storage and event hooks.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bennyh960/queue-manager"
+  },
   "version": "1.0.0",
+  "author": "bennyh960",
+  "license": "MIT",
   "keywords": [
     "queue",
     "task",
@@ -13,6 +19,7 @@
     "worker"
   ],
   "type": "module",
+  "types": "dist/index.d.ts",
   "main": "index.js",
   "exports": {
     ".": {
@@ -22,7 +29,8 @@
   },
   "files": [
     "dist/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "dev": "nodemon --exec \"tsc --noEmit && tsx src/index.ts\"",
@@ -33,13 +41,11 @@
     "build:watch": "tsc --watch",
     "start": "npm run build && node dist/index.js",
     "redis:ui": "npm run redis-commander",
+    "deploy": "npm version patch &&npm run build && npm publish",
     "test": "jest"
   },
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@jest/globals": "^30.0.5",
-    "@tsconfig/node20": "^20.1.6",
     "@types/express": "^5.0.3",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.2.1",
@@ -48,9 +54,13 @@
     "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.3",
-    "ioredis": "^5.7.0",
     "express": "^5.1.0",
     "typescript": "^5.9.2"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
+  }
 }
