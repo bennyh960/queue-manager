@@ -1,13 +1,13 @@
 import type { HandlerMap, QueueBackendConfig, Task } from '../types/index.js';
 import { BaseQueueRepository } from './base.repositury.js';
-import type { dynamicallyImportRedis } from '../util/helpers.js';
+import type { Redis } from 'ioredis';
 
 export class RedisQueueRepository extends BaseQueueRepository {
-  private readonly redis: ReturnType<typeof dynamicallyImportRedis>;
+  private readonly redis: Redis;
   storageName: string;
 
   constructor(
-    redisClient: ReturnType<typeof dynamicallyImportRedis>,
+    redisClient: Redis,
     maxRetries: number,
     maxProcessingTime: number,
     storageName?: Extract<QueueBackendConfig, { type: 'redis' }>['storageName']
@@ -25,12 +25,12 @@ export class RedisQueueRepository extends BaseQueueRepository {
       const allIds = (await Promise.all(statuses.map(s => this.redis.lrange(`${this.storageName}:queue:${s}`, 0, -1)))).flat();
       if (allIds.length === 0) return [];
       const tasks = await this.redis.mget(allIds.map(id => `${this.storageName}:task:${id}`));
-      return tasks.filter(Boolean).map((t: string) => JSON.parse(t!));
+      return tasks.filter(Boolean).map(t => JSON.parse(t!));
     } else {
       const ids = await this.redis.lrange(`${this.storageName}:queue:${status}`, 0, -1);
       if (ids.length === 0) return [];
       const tasks = await this.redis.mget(ids.map((id: string) => `${this.storageName}:task:${id}`));
-      return tasks.filter(Boolean).map((t: string) => JSON.parse(t!));
+      return tasks.filter(Boolean).map(t => JSON.parse(t!));
     }
   }
 
