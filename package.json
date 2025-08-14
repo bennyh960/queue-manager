@@ -43,7 +43,7 @@
     "build:watch": "tsc --watch",
     "start": "npm run build && node dist/index.js",
     "redis:ui": "redis-commander",
-    "deploy": "npm version patch && npm run build && git add . && git commit -m 'Deploying new version' && git push && npm publish",
+    "deploy": "npm version patch  && npm publish",
     "test": "jest"
   },
   "devDependencies": {
