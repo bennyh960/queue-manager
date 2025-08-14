@@ -132,11 +132,11 @@ export class QueueManager<H extends HandlerMap> {
       case 'memory':
         return new MemoryQueueRepository(maxRetries, maxProcessingTime);
       case 'redis':
-        // const redis = await import('ioredis'); // Ensure ioredis is loaded
+        const redis = require('ioredis'); // Ensure ioredis is loaded
 
-        // if (!redis) {
-        //   throw new Error('ioredis is not installed. Please run `npm install ioredis`. if you are using redis backend');
-        // }
+        if (!redis) {
+          throw new Error('ioredis is not installed. Please run `npm install ioredis`. if you are using redis backend');
+        }
         return new RedisQueueRepository(backend.redisClient, maxRetries, maxProcessingTime, backend.storageName);
       case 'custom':
         return backend.repository;

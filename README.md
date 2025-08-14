@@ -172,11 +172,11 @@ queue.startWorker();
 - Handlers and payloads are type-checked.
 - Task shape is inferred from your handler signatures.
 
-### More Examples:
+<!-- ### More Examples:
 
 - custom repository
 - redis repository
-- postgres repository
+- postgres repository -->
 
 ---
 
