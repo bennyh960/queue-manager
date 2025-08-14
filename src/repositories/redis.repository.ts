@@ -1,13 +1,14 @@
 import type { HandlerMap, QueueBackendConfig, Task } from '../types/index.js';
 import { Redis } from 'ioredis';
 import { BaseQueueRepository } from './base.repositury.js';
+import type { dynamicallyImportRedis } from '../util/helpers.js';
 
 export class RedisQueueRepository extends BaseQueueRepository {
   private readonly redis: Redis;
   storageName: string;
 
   constructor(
-    redisClient: Redis,
+    redisClient: ReturnType<typeof dynamicallyImportRedis>,
     maxRetries: number,
     maxProcessingTime: number,
     storageName?: Extract<QueueBackendConfig, { type: 'redis' }>['storageName']
