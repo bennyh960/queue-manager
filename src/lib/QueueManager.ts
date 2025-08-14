@@ -8,7 +8,6 @@ import {
   type HandlerMap,
   type IQueueManager,
   type LoggerLike,
-  type ProcessType,
   type QueueBackendConfig,
   type QueueManagerEvents,
   type Task,
@@ -22,7 +21,8 @@ import { randomUUID } from 'crypto';
 const singletonRegistry = new HandlerRegistry();
 
 const MAX_PROCESSING_TIME = 10 * 60 * 1000; // 10 minutes in milliseconds
-const MAX_RETRIES = 1; // Default max retries for tasks
+const MAX_RETRIES = 3; // Default max retries for tasks
+const DEFAULT_DELAY = 10000; // Default delay between task checks in milliseconds
 
 export class QueueManager<H extends HandlerMap> {
   private readonly emitter = new EventEmitter();
@@ -43,8 +43,6 @@ export class QueueManager<H extends HandlerMap> {
   private readonly MAX_RETRIES: number;
   private readonly MAX_PROCESSING_TIME: number;
 
-  processType: ProcessType;
-
   backend: QueueBackendConfig;
 
   private readonly worker: QueueWorker<H>;
@@ -63,8 +61,7 @@ export class QueueManager<H extends HandlerMap> {
   };
 
   private constructor({
-    processType,
-    delay = 500,
+    delay = DEFAULT_DELAY,
     singleton = true,
     maxRetries = MAX_RETRIES,
     maxProcessingTime = MAX_PROCESSING_TIME,
@@ -80,26 +77,23 @@ export class QueueManager<H extends HandlerMap> {
     this.MAX_RETRIES = maxRetries;
     this.MAX_PROCESSING_TIME = maxProcessingTime;
     this.logger = logger; // Optional logger, can be used for logging events
-    this.processType = processType;
     this.backend = backend;
     this.crashOnWorkerError = crashOnWorkerError ?? false;
 
-    if (backend.type !== 'custom' && processType === 'multi-atomic') {
-      throw new Error(errors.backendTypeAndProcessTypeConflictError.replace(/\$1/g, backend.type));
-    } else if (backend.type === 'custom') {
+    if (backend.type === 'custom') {
       this.log('warn', warnings.atomicProcessWarning);
     }
   }
 
-  public static async getInstance<H extends HandlerMap>(args: Omit<IQueueManager, 'repository'>): Promise<QueueManager<H>> {
+  public static getInstance<H extends HandlerMap>(args: Omit<IQueueManager, 'repository'>): QueueManager<H> {
     const maxRetries = args.maxRetries || MAX_RETRIES;
     const maxProcessingTime = args.maxProcessingTime || MAX_PROCESSING_TIME;
 
-    const repository: QueueRepository = await this.getBackendRepository(args.backend, maxRetries, maxProcessingTime);
+    const repository: QueueRepository = this.getBackendRepository(args.backend, maxRetries, maxProcessingTime);
     repository.logger = args.logger;
 
     const isSingleton = args.singleton !== false; // default to singleton
-    const delay = args.delay ?? 500;
+    const delay = args.delay ?? DEFAULT_DELAY;
 
     if (isSingleton) {
       if (!QueueManager.instance) {
@@ -107,7 +101,6 @@ export class QueueManager<H extends HandlerMap> {
           repository,
           backend: args.backend,
           delay,
-          processType: args.processType,
           singleton: true,
           maxRetries,
           maxProcessingTime,
@@ -128,27 +121,22 @@ export class QueueManager<H extends HandlerMap> {
       maxRetries,
       maxProcessingTime,
       logger: args.logger,
-      processType: args.processType,
       crashOnWorkerError: args.crashOnWorkerError,
     });
   }
 
-  private static async getBackendRepository(
-    backend: QueueBackendConfig,
-    maxRetries: number,
-    maxProcessingTime: number
-  ): Promise<QueueRepository> {
+  private static getBackendRepository(backend: QueueBackendConfig, maxRetries: number, maxProcessingTime: number): QueueRepository {
     switch (backend.type) {
       case 'file':
         return new FileQueueRepository(backend.filePath, maxRetries, maxProcessingTime);
       case 'memory':
         return new MemoryQueueRepository(maxRetries, maxProcessingTime);
       case 'redis':
-        const redis = await import('ioredis'); // Ensure ioredis is loaded
+        // const redis = await import('ioredis'); // Ensure ioredis is loaded
 
-        if (!redis) {
-          throw new Error('ioredis is not installed. Please run `npm install ioredis`. if you are using redis backend');
-        }
+        // if (!redis) {
+        //   throw new Error('ioredis is not installed. Please run `npm install ioredis`. if you are using redis backend');
+        // }
         return new RedisQueueRepository(backend.redisClient, maxRetries, maxProcessingTime, backend.storageName);
       case 'custom':
         return backend.repository;

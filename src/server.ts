@@ -26,6 +26,12 @@ function doSomething() {
   // return new Promise(resolve => setTimeout(resolve, 1000));
 }
 
+// const redis = await import('ioredis'); // Ensure ioredis is loaded
+
+// if (!redis) {
+//   throw new Error('ioredis is not installed. Please run `npm install ioredis`. if you are using redis backend');
+// }
+
 export type HandlerMap = {
   sendEmail: ({ email }: { email: string }) => Promise<void>;
   resizeImage: ({ imageUrl }: { imageUrl: string }) => Promise<void>;
@@ -37,9 +43,8 @@ app.use(express.json());
 
 const queueAsync = async () => {
   const redis = new Redis({ host: 'localhost', port: 6380 });
-  const queue = await QueueManager.getInstance<HandlerMap>({
+  const queue = QueueManager.getInstance<HandlerMap>({
     backend: { type: 'redis', redisClient: redis, storageName: 'my-queue2' },
-    processType: 'single',
     logger: new DefaultLogger(),
   });
 

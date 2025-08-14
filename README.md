@@ -1,7 +1,7 @@
 # queue-manager
 
 A flexible, type-safe, and extensible task queue for Node.js and TypeScript.  
-Supports in-memory, file-based, and custom persistent backends.  
+Supports in-memory, file-based,redis , postgres (next-release) and custom persistent backends.  
 Features handler registration, event-driven lifecycle, retries, priorities, and graceful worker
 management.
 
@@ -10,7 +10,7 @@ management.
 ## Features
 
 - **Type-safe task and payload binding** via TypeScript generics
-- **Pluggable storage**: in-memory, file, or custom repositories
+- **Pluggable storage**: in-memory, file,redis, postgres or custom repositories
 - **Event-driven**: listen to task lifecycle events
 - **Retries, priorities, stuck task detection**
 - **Singleton or multi-instance** queue management
@@ -22,7 +22,7 @@ management.
 ## Installation
 
 ```bash
-npm install queue-manager
+npm install queue-manager-pro
 ```
 
 ---
@@ -45,18 +45,17 @@ const handlers = {
 ### 2. Create a Queue Instance
 
 ```typescript
-import QueueManager from 'queue-manager';
+import { QueueManager } from 'queue-manager-pro';
 
 const queue = QueueManager.getInstance<typeof handlers>({
-  backend: { type: 'file', filePath: './tasks.json' }, // or 'memory'
-  processType: 'single', // or 'multi-atomic'
+  backend: { type: 'file', filePath: './tasks.json' }, // or 'memory' /'redis' / 'postgres' / 'custom'
 });
 ```
 
 ### 3. Register Handlers
 
 ```typescript
-// register options will override instance `maxRetries` and `maxProcessingTime` for the particular handler
+// optional options will override instance `maxRetries` and `maxProcessingTime` for the particular handler
 queue.register('sendEmail', handlers.sendEmail, { maxRetries: 3, maxProcessingTime: 5000 });
 queue.register('resizeImage', handlers.resizeImage);
 ```
@@ -84,14 +83,14 @@ queue.startWorker();
 ### `QueueManager.getInstance(options)`
 
 - **Options:**
-  - `backend`: `{ type: 'file' | 'memory' | 'custom', ... }`
-  - `processType`: `'single'` (default) mean run only in 1 process or `'multi-atomic'` run on multi
-    instances
-  - `delay`: Polling interval in ms (default: 500)
-  - `logger`: Optional custom logger - support common loggers libraries
+  - `backend`: `{ type: 'file' | 'memory' | 'postgres' | 'redis'| 'custom', ... }` instances
+  - `delay`: Polling interval in ms (default: 10000)
+  - `logger`: Optional logger - support common loggers libraries and 'console'
   - `singleton`: Use singleton instance (default: true)
-  - `maxRetries`: Default max retries for tasks that failed or exceeding max processing time
-  - `maxProcessingTime`: Default max processing time for tasks
+  - `maxRetries`: max retries for tasks that failed or exceeding max processing time could be
+    override by handler or task maxRetries property. (default: 3)
+  - `maxProcessingTime`: max processing time for tasks that stack on processing status too long
+    (default: 10 min)
   - `crashOnWorkerError`: if `true` it will stop the worker and throw the error (no event emission)
     else Emit the taskFailed event for external handlers.. (default: false)
 
@@ -104,18 +103,25 @@ queue.startWorker();
 
   - `name`: string — Handler name
   - `handler`: function — Handler function `(payload) => any`
-  - `options`:
-    `{ maxRetries?: number, maxProcessingTime?: number ,useAuthoSchema?:boolean, paramSchema:(payload:any)=>{isValid:boolean,message:string|null , source:string} }`
-    (optional)
+  - `options`(optional): -`maxRetries?` : number - same as the instance 'maxRetries' but it will
+    override the instance 'maxRetries' for the particular handler.
+    - `maxProcessingTime`:number - same as instance 'maxProcessingTime' but it will override the
+      instance 'maxProcessingTime' for the particular handler.
+    - `useAutoSchema?`:boolean - using regex to identify handler params - cover 90% of cases .
+    - `paramSchema?` : a function that get payload as arg , inside you can use your own default
+      schema to validate the payload . (payload:any)=> {isValid:boolean,message:string|null ,
+      source:string}
 
-  **_See [register](examples/handlerRegister.md) for usage examples._**
+  **_See
+  [register](https://github.com/bennyh960/queue-manager/blob/main/examples/handlerRegister.md) for
+  usage examples._**
 
 ### `queue.addTaskToQueue(handler, payload, options?)`
 
 - Add a new task to the queue.
 - **Parameters:**
   - `handler`: string — Name of the registered handler
-  - `payload`: object — Data for the handler (type-checked)
+  - `payload`: object — args for the handler (type-checked)
   - `options`: `{ maxRetries?: number, maxProcessingTime?: number, priority?: number }` (optional)
 - **Returns:** `Promise<Task>`
 
@@ -166,111 +172,11 @@ queue.startWorker();
 - Handlers and payloads are type-checked.
 - Task shape is inferred from your handler signatures.
 
-## Example: Custom Backend with PostgreSQL
+### More Examples:
 
-You can use a custom backend to integrate with any data store, such as PostgreSQL.  
-You are responsible for implementing atomic dequeue logic in your repository.  
-The queue-manager will use your repository's methods and only check that the returned values are
-valid.
-
-### PostgreSQL Table Schema Example
-
-Below is a minimal table definition for storing tasks in PostgreSQL.  
-You can adjust column types and add indexes as needed for your use case.
-
-```sql
--- Code Generated by Sidekick is for learning and experimentation purposes only.
-CREATE TABLE tasks (
-  id TEXT PRIMARY KEY,
-  handler TEXT NOT NULL,
-  payload JSONB NOT NULL,
-  status TEXT NOT NULL, -- e.g., 'pending', 'processing', 'completed', 'failed'
-  log JSONB,
-  createdat TIMESTAMPTZ DEFAULT NOW(),
-  updatedat TIMESTAMPTZ DEFAULT NOW(),
-  maxretries INTEGER DEFAULT 3,
-  maxprocessingtime INTEGER, -- milliseconds
-  retrycount INTEGER DEFAULT 0,
-  priority INTEGER DEFAULT 0
-);
-
--- Optional: Indexes for performance
-CREATE INDEX idx_tasks_status_priority ON tasks (status, priority DESC, createdat ASC);
-```
-
-Below is a minimal example using PostgreSQL and the `pg` npm package:
-
-```typescript
-import { Pool } from 'pg';
-import { CustomQueueRepository, QueueManager } from 'queue-manager';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-// Minimal implementation for PostgreSQL
-const customRepo = new CustomQueueRepository({
-  loadTasks: async () => {
-    const { rows } = await pool.query('SELECT * FROM tasks ORDER BY id ASC');
-    return rows;
-  },
-  saveTasks: async tasks => {
-    // This is a simple approach: delete all and re-insert.
-    // For production, use upserts or more efficient logic.
-    await pool.query('DELETE FROM tasks');
-    for (const task of tasks) {
-      await pool.query(
-        'INSERT INTO tasks (id, handler, payload, status, log, createdat, updatedat, maxretries, maxprocessingtime, retrycount, priority) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-        [
-          task.id,
-          task.handler,
-          JSON.stringify(task.payload),
-          task.status,
-          task.log,
-          task.createdAt,
-          task.updatedAt,
-          task.maxRetries,
-          task.maxProcessingTime,
-          task.retryCount,
-          task.priority,
-        ]
-      );
-    }
-    return tasks;
-  },
-  dequeue: async () => {
-    // Atomic dequeue: find the first pending task and mark as processing
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const { rows } = await client.query(
-        `SELECT * FROM tasks WHERE status = 'pending' ORDER BY priority DESC, createdat ASC LIMIT 1 FOR UPDATE SKIP LOCKED`
-      );
-      if (rows.length === 0) {
-        await client.query('COMMIT');
-        return null;
-      }
-      const task = rows[0];
-      await client.query(
-        `UPDATE tasks SET status = 'processing', updatedat = NOW() WHERE id = $1`,
-        [task.id]
-      );
-      await client.query('COMMIT');
-      return task;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-  },
-});
-
-const queue = QueueManager.getInstance<typeof handlers>({
-  backend: { type: 'custom', repository: customRepo },
-  processType: 'multi-atomic',
-});
-```
+- custom repository
+- redis repository
+- postgres repository
 
 ---
 

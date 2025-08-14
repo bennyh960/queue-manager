@@ -45,7 +45,6 @@ export type ProcessType = 'single' | 'multi-atomic';
 
 export interface IQueueManager {
   repository: QueueRepository;
-  processType: ProcessType;
   delay?: number;
   singleton?: boolean;
   maxRetries?: number;

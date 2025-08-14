@@ -1,8 +1,8 @@
 const atomicProcessWarning = `
 ==========================================================
-⚠️  WARNING: Custom or Non-Atomic Backend Selected! ⚠️
+⚠️  WARNING: Custom Backend Selected! ⚠️
 ==========================================================
-You have configured the queue with a custom or non-atomic backend.
+You have configured the queue with a custom backend.
 It is your responsibility to ensure that dequeue and task update operations
 are performed atomically to prevent race conditions and data corruption.
 

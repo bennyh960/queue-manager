@@ -16,7 +16,9 @@
     "manager",
     "event-driven",
     "repository",
-    "worker"
+    "worker",
+    "ioredis",
+    "postgres"
   ],
   "type": "module",
   "types": "dist/index.d.ts",
@@ -40,7 +42,7 @@
     "prepublishOnly": "npm run build",
     "build:watch": "tsc --watch",
     "start": "npm run build && node dist/index.js",
-    "redis:ui": "npm run redis-commander",
+    "redis:ui": "redis-commander",
     "deploy": "npm version patch &&npm run build && npm publish",
     "test": "jest"
   },
