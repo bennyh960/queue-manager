@@ -23,6 +23,22 @@ When registering a handler with `queue.register`, provide the following paramete
     Signature:  
     `(payload: any) => { isValid: boolean, message: string | null, source: string }`
 
+**Send Email Example:** argument must be an object - this example will not work
+
+```ts
+function sendEmail(name: string, email: string, subject: string, message: string) {
+  // your send email logic
+}
+```
+
+This is a working example:
+
+```ts
+function sendEmail(payload: { name: string; email: string; subject: string; message: string }) {
+  // your send email logic
+}
+```
+
 **Example: useAutoSchema:**
 
 - when adding task to queue - the auto schema will validate automatically if the payloads are valid
@@ -36,14 +52,48 @@ queue.register('sendEmail', sendEmail, {
 });
 ```
 
-**Example: paramSchema:**
+**Example: paramSchema with your own logic:**
 
 ```ts
 queue.register('sendEmail', sendEmail, {
   paramSchema: payload => {
-    // validation logic here
-    if (typeof payload.email !== 'string') {
-      return { isValid: false, message: 'email type must be string', source: 'param-schema' };
+    for (key in payload) {
+      if (typeof payload[key] !== 'string') {
+        return { isValid: false, message: `${key} type must be string` };
+      }
+    }
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return { isValid: false, message: 'please use valid email' };
+    }
+
+    return { isValid: true, message: null };
+  },
+});
+```
+
+**Example: paramSchema with your own logic + external libraries like zod:**
+
+```ts
+import { z } from 'zod';
+
+const emailPayloadSchema = z.object({
+  name: z.string(),
+  email: z.string().email(), // Ensures valid email format
+  subject: z.string(),
+  message: z.string(),
+});
+
+queue.register('sendEmail', sendEmail, {
+  paramSchema: payload => {
+    const result = emailPayloadSchema.safeParse(payload);
+    if (!result.success) {
+      // here you will need to convert zod schema into readable message
+      const errorMessages = result.error.errors
+        .map(err => `${err.path.join('.')}: ${err.message}`)
+        .join('; ');
+      return { isValid: true, message: errorMessages, source: 'param-schema' };
     }
     return { isValid: true, message: null, source: 'param-schema' };
   },

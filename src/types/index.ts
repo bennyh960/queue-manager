@@ -1,20 +1,25 @@
 import type { Redis } from 'ioredis';
 import type { QueueRepository } from '../repositories/repository.interface.js';
-import type { TypeOf } from '../util/schema.util.js';
-import type { TaskSchema } from '../util/task.schema.js';
 
 export type HandlerMap = Record<string, (payload: any) => any | Promise<any>>;
 
-type TaskSchemaBase = Omit<TypeOf<typeof TaskSchema>, 'handler' | 'payload'>;
-
-type TaskFromSchemaAndHandler<H extends HandlerMap> = {
-  [K in keyof H]: TaskSchemaBase & {
+export interface TaskBase {
+  id: string;
+  status: 'pending' | 'processing' | 'done' | 'failed' | 'deleted';
+  log?: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  maxRetries: number;
+  maxProcessingTime: number;
+  retryCount: number;
+  priority: number;
+}
+export type Task<H extends HandlerMap> = {
+  [K in keyof H]: TaskBase & {
     handler: K;
     payload: Parameters<H[K]>[0];
   };
 }[keyof H];
-
-export type Task<H extends HandlerMap> = TaskFromSchemaAndHandler<H>;
 
 export type QueueManagerEvents<H extends HandlerMap> = {
   taskAdded: (task: Task<H>) => void;

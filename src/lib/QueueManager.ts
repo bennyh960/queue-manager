@@ -13,7 +13,6 @@ import {
   type Task,
 } from '../types/index.js';
 import { warnings } from '../util/warnings.js';
-import { errors } from '../util/errors.js';
 import { QueueWorker } from './queueWorker.js';
 import { RedisQueueRepository } from '../repositories/redis.repository.js';
 import { randomUUID } from 'crypto';
@@ -143,11 +142,20 @@ export class QueueManager<H extends HandlerMap> {
   async addTaskToQueue<K extends keyof H>(
     handler: K,
     payload: Parameters<H[K]>[0],
-    options?: { maxRetries?: number; maxProcessingTime?: number; priority?: number }
+    options?: {
+      maxRetries?: Task<HandlerMap>['maxRetries'];
+      maxProcessingTime?: Task<HandlerMap>['maxProcessingTime'];
+      priority?: Task<HandlerMap>['priority'];
+      skipOnPayloadError?: boolean;
+    }
   ): Promise<Task<H>> {
     const validationResult = this.validateHandlerParams(handler as string, payload);
     if (!validationResult.isValid) {
-      throw new Error(validationResult.message || 'Invalid handler parameters');
+      if (options?.skipOnPayloadError) {
+        this.log('warn', `skipOnPayloadError set to true, but this task might fail due to invalid payload: ${validationResult.message}`);
+      } else {
+        throw new Error(validationResult.message || 'Invalid handler parameters');
+      }
     }
 
     const handlerEntry = this.registry.get(handler as string);

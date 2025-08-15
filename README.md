@@ -9,12 +9,11 @@ management.
 
 ## Features
 
-- **Type-safe task and payload binding** via TypeScript generics
 - **Pluggable storage**: in-memory, file,redis, postgres or custom repositories
 - **Event-driven**: listen to task lifecycle events
 - **Retries, priorities, stuck task detection**
+- **Type-safe task and payload binding** via TypeScript generics
 - **Singleton or multi-instance** queue management
-- **Customizable logging**
 - **Atomic dequeue for multi-process setups**
 
 ---
@@ -122,7 +121,18 @@ queue.startWorker();
 - **Parameters:**
   - `handler`: string — Name of the registered handler
   - `payload`: object — args for the handler (type-checked)
-  - `options`: `{ maxRetries?: number, maxProcessingTime?: number, priority?: number }` (optional)
+  - `options`:
+    `{ maxRetries?: number, maxProcessingTime?: number, priority?: number,skipOnPayloadError?:boolean }`
+    (optional)
+    - `maxRetries`: you can set this value for particular task and it will ignore handler and
+      instance maxRetries
+    - `maxProcessingTime` : same as maxRetries , you can specify maxProcessingTime for this
+      particular task if you expect this specific task might take longer/shorter then
+      handler/instance maxProcessingTime
+    - `priority` : the queue is design for 'FIFO' , but if you specify priority for a task it will
+      process the higher priority first.
+    - `skipOnPayloadError` : if it `true` , it will just warn you if payload is not valid but
+      continue. else if it `false` it will kill the process and u get runtime error.
 - **Returns:** `Promise<Task>`
 
 ---

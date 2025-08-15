@@ -265,3 +265,31 @@ export type TypeOf<S> = S extends MiniSchema<infer T> ? T : never;
 
 // --- Now you get autocompletion and type checking! ---
 // const x: User = { email: "alice@example.com", birthday: null, tags: ["foo", "bar"], role: "admin" };
+
+// type TaskSchemaBase = Omit<TypeOf<typeof TaskSchema>, 'handler' | 'payload'>;
+
+// type TaskFromSchemaAndHandler<H extends HandlerMap> = {
+//   [K in keyof H]: TaskSchemaBase & {
+//     handler: K;
+//     payload: Parameters<H[K]>[0];
+//   };
+// }[keyof H];
+
+// export type Task<H extends HandlerMap> = TaskFromSchemaAndHandler<H>;
+
+// example:
+// import { MiniSchema as M } from './schema.util.js';
+
+// export const TaskSchema = M.object({
+//   id: M.string(),
+//   handler: M.string(),
+//   payload: M.objectAny(),
+//   status: M.enum(['pending', 'processing', 'done', 'failed', 'deleted']),
+//   log: M.string().default(''),
+//   createdAt: M.union([M.date(), M.string()]).default(new Date()),
+//   updatedAt: M.union([M.date(), M.string()]).default(new Date()),
+//   maxRetries: M.number().default(10).optional(),
+//   maxProcessingTime: M.number().default(5000),
+//   retryCount: M.number().default(0),
+//   priority: M.number().default(0),
+// });

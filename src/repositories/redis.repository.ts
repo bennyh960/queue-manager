@@ -43,7 +43,12 @@ export class RedisQueueRepository extends BaseQueueRepository {
   // Enqueue: Add task hash and push ID to pending queue
   async enqueue(task: Task<HandlerMap>): Promise<void> {
     const taskKey = `${this.storageName}:task:${task.id}`;
-    await this.redis.multi().set(taskKey, JSON.stringify(task)).rpush(`${this.storageName}:queue:pending`, task.id.toString()).exec();
+    await this.redis
+      .multi()
+      .set(taskKey, JSON.stringify(task))
+      .rpush(`${this.storageName}:queue:pending`, task.id.toString())
+      // .zadd(`${this.storageName}:queue:pending`, task.priority || 0, task.id.toString())
+      .exec();
   }
 
   // Update a single task atomically

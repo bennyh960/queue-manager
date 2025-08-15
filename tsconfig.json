@@ -34,6 +34,6 @@
     // Uncomment this for backend code without DOM APIs
     /* "lib": ["ES2022"] */
   },
-  "include": ["src", "tests"], // Includes the `src` directory in the project
-  "exclude": ["node_modules", "dist"] // Excludes `node_modules` and `dist` directories from the project
+  "include": ["src"], // Includes the `src` directory in the project
+  "exclude": ["node_modules", "dist", "src/dev_only"] // Excludes `node_modules` and `dist` directories from the project
 }

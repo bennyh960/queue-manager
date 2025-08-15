@@ -70,7 +70,7 @@ export abstract class BaseQueueRepository implements QueueRepository {
         this.emitEvent?.('taskStuck', task);
         this.logger?.warn(`Task ${task.id} is stuck`);
         const maxRetries = task.maxRetries ?? this.MAX_RETRIES;
-        if (task.retryCount < maxRetries) {
+        if (task?.retryCount < maxRetries) {
           this.logger?.warn(`Retrying task ${task.id} (${task.retryCount + 1}/${maxRetries})`);
           await this.updateTask(task.id, { retryCount: task.retryCount + 1, status: 'pending' });
           this.emitEvent?.('taskRetried', task);

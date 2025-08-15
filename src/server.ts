@@ -1,14 +1,19 @@
 import express from 'express';
 import QueueManager from './lib/QueueManager.js';
 import type { Task } from './types/index.js';
-import { MiniSchema as M, ValidationError } from './util/schema.util.js';
+import { MiniSchema as M, ValidationError } from './dev_only/schema.util.js';
 import { Redis } from 'ioredis'; // ✅ This works with CommonJS-style exports
-import { DefaultLogger } from './util/logger.js';
+import { DefaultLogger } from './dev_only/logger.js';
 
 export async function sendEmail({ email }: { email: string }) {
   if (!email) {
     throw new Error('Email is required');
   }
+
+  const EmailSchema = M.object({
+    email: M.regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email format'),
+  });
+  EmailSchema.validateAll({ email });
   console.log(`Sending email to ${email}...`);
   await new Promise(res => setTimeout(res, 3000));
   console.log(`Email sent to ${email}`);
@@ -41,61 +46,57 @@ export type HandlerMap = {
 const app = express();
 app.use(express.json());
 
-const queueAsync = async () => {
-  const redis = new Redis({ host: 'localhost', port: 6380 });
-  const queue = QueueManager.getInstance<HandlerMap>({
-    backend: { type: 'redis', redisClient: redis, storageName: 'my-queue2' },
-    logger: new DefaultLogger(),
-  });
+// const redis = new Redis({ host: 'localhost', port: 6380 });
+const queue = QueueManager.getInstance<HandlerMap>({
+  backend: { type: 'memory' },
+  // backend: { type: 'file', filePath: 'data/tasks.json' },
+  logger: new DefaultLogger(),
+  crashOnWorkerError: false,
+});
 
-  queue.register('doSomething', doSomething);
-  queue.register('sendEmail', sendEmail, {
-    maxRetries: 3,
-    maxProcessingTime: 2000,
-    useAutoSchema: true,
-    paramSchema: payload => {
-      try {
-        const EmailSchema = M.object({
-          email: M.regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email format'),
-        });
+queue.register('doSomething', doSomething);
+queue.register('sendEmail', sendEmail, {
+  maxRetries: 3,
 
-        EmailSchema.validateAll(payload);
+  maxProcessingTime: 2000,
+  useAutoSchema: true,
+  paramSchema: payload => {
+    try {
+      const EmailSchema = M.object({
+        email: M.regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email format'),
+      });
 
-        return { isValid: true, message: null, source: 'auto-schema' };
-      } catch (error: any) {
-        const errors = error instanceof ValidationError ? error.errors : [{ path: 'unknown', message: JSON.stringify(error) }];
+      EmailSchema.validateAll(payload);
 
-        return {
-          isValid: false,
-          message: errors.map(e => e.message).join(', '),
-          source: 'auto-schema',
-        };
-      }
-    },
-  });
+      return { isValid: true, message: null };
+    } catch (error: any) {
+      const errors = error instanceof ValidationError ? error.errors : [{ path: 'unknown', message: JSON.stringify(error) }];
 
-  queue.register('resizeImage', resizeImage, {
-    paramSchema: payload => {
-      if (!payload.imageUrl) {
-        return { isValid: false, message: 'imageUrl is required', source: 'param-schema' };
-      }
-      const isValid = typeof payload.imageUrl === 'string';
-      return { isValid, message: isValid ? null : 'Invalid imageUrl' };
-    },
-  });
+      return {
+        isValid: false,
+        message: errors.map(e => e.message).join(', '),
+      };
+    }
+  },
+});
 
-  await queue.addTaskToQueue('sendEmail', { email: 'test1@example.com' }, { priority: 1 });
-  await queue.addTaskToQueue('sendEmail', { email: 'test3@example.com' }, { priority: 3 });
-  await queue.addTaskToQueue('sendEmail', { email: 'test9@example.com' }, { priority: 9 });
-  await queue.addTaskToQueue('resizeImage', { imageUrl: 'http://example.com/image.jpg' }, { priority: 10 });
-  queue.startWorker();
+queue.register('resizeImage', resizeImage, {
+  paramSchema: payload => {
+    if (!payload.imageUrl) {
+      return { isValid: false, message: 'imageUrl is required', source: 'param-schema' };
+    }
+    const isValid = typeof payload.imageUrl === 'string';
+    return { isValid, message: isValid ? null : 'Invalid imageUrl' };
+  },
+});
 
-  return queue;
-};
+await queue.addTaskToQueue('sendEmail', { email: 'test3@example.com' }, { priority: 3 });
+await queue.addTaskToQueue('sendEmail', { email: 'test9@example.com' }, { priority: 9 });
+await queue.addTaskToQueue('resizeImage', { imageUrl: 'http://example.com/image.jpg' }, { priority: 10 });
+await queue.addTaskToQueue('sendEmail', { email: 'test1example.com' }, { priority: 10, skipOnPayloadError: true });
+queue.startWorker();
 
 const run = async () => {
-  const queue = await queueAsync();
-
   // Add a task to the queue
   app.post('/tasks', async (req, res) => {
     const { isValid, message, source } = queue.validateHandlerParams(req.body.handler, req.body.payload);
@@ -215,4 +216,4 @@ const run = async () => {
   });
 };
 // run();
-queueAsync();
+// queueAsync();

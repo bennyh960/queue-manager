@@ -1,5 +1,4 @@
 import type { HandlerMap, Task } from '../types/index.js';
-import { TaskSchema } from '../util/task.schema.js';
 import { BaseQueueRepository } from './base.repositury.js';
 import type { QueueRepository } from './repository.interface.js';
 
