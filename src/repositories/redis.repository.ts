@@ -1,20 +1,31 @@
 import type { HandlerMap, QueueBackendConfig, Task } from '../types/index.js';
 import { BaseQueueRepository } from './base.repositury.js';
 import type { Redis } from 'ioredis';
+import crypto from 'crypto';
 
 export class RedisQueueRepository extends BaseQueueRepository {
   private readonly redis: Redis;
   storageName: string;
+  useLockKey: boolean;
+  private dequeueLockName: string;
 
   constructor(
     redisClient: Redis,
     maxRetries: number,
     maxProcessingTime: number,
-    storageName?: Extract<QueueBackendConfig, { type: 'redis' }>['storageName']
+    storageName?: Extract<QueueBackendConfig, { type: 'redis' }>['storageName'],
+    useLockKey?: Extract<QueueBackendConfig, { type: 'redis' }>['useLockKey']
   ) {
     super(maxRetries, maxProcessingTime);
     this.redis = redisClient;
     this.storageName = storageName || 'queue-manager';
+    this.useLockKey = useLockKey || false;
+    this.dequeueLockName = `${this.storageName}:dequeue-lock`;
+  }
+
+  setDequeueLockName(name: string): void {
+    // todo: edit the lock name in redis also
+    this.dequeueLockName = `${this.storageName}:${name}`;
   }
 
   // Load all tasks by status
@@ -72,15 +83,38 @@ export class RedisQueueRepository extends BaseQueueRepository {
     return task;
   }
 
+  private async acquireLock(ttl: number): Promise<boolean> {
+    // for single process its enough
+    if (this.dequeueLock) return false;
+
+    // for multi process we use redis lock
+    if (this.useLockKey) {
+      const uuid = crypto.randomUUID();
+      const result = await this.redis.set(this.dequeueLockName, uuid, 'PX', ttl, 'NX');
+      return result === 'OK';
+    }
+    this.dequeueLock = true;
+    return true;
+  }
+
+  private async releaseLock(): Promise<void> {
+    this.dequeueLock = false;
+    if (this.useLockKey) {
+      await this.redis.del(this.dequeueLockName);
+    }
+  }
+
   // Dequeue: Atomically move task from pending to processing
   override async dequeue(): Promise<Task<HandlerMap> | null> {
-    if (this.dequeueLock) return null;
-    this.dequeueLock = true;
-
     try {
       // Get all pending tasks and sort them
       const tasks = await this.loadTasks('pending');
       const taskToProcess = [...tasks].sort(this.sortTasksToDequeue)[0];
+
+      const isLocked = await this.acquireLock(taskToProcess!.maxProcessingTime * taskToProcess!.maxRetries + 1000);
+      if (!isLocked) {
+        return null;
+      }
 
       if (!taskToProcess) {
         const processingTasks = await this.loadTasks('processing');
@@ -109,7 +143,7 @@ export class RedisQueueRepository extends BaseQueueRepository {
 
       return taskToProcess;
     } finally {
-      this.dequeueLock = false;
+      await this.releaseLock();
     }
   }
 }

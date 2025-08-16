@@ -35,7 +35,7 @@ export type QueueManagerEvents<H extends HandlerMap> = {
 export type QueueBackendConfig =
   | { type: 'file'; filePath: string }
   | { type: 'memory' }
-  | { type: 'redis'; redisClient: Redis; storageName?: string }
+  | { type: 'redis'; redisClient: Redis; storageName?: string; useLockKey?: boolean }
   | { type: 'custom'; repository: QueueRepository };
 
 // util

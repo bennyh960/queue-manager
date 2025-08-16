@@ -1,4 +1,5 @@
 import type { HandlerMap, LoggerLike, Task } from '../types/index.js';
+import { TaskProcessingTimeoutError } from '../util/errors.js';
 import type QueueManager from './QueueManager.js';
 
 export class QueueWorker<H extends HandlerMap> {
@@ -27,12 +28,40 @@ export class QueueWorker<H extends HandlerMap> {
     this.log('info', 'Worker stopped');
   }
 
+  private async processTaskWithTimeout(task: Task<HandlerMap>): Promise<any> {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new TaskProcessingTimeoutError()), task.maxProcessingTime + 1000);
+    });
+    try {
+      const promise = this.processTask(task);
+      return await Promise.race([promise, timeoutPromise]);
+    } catch (err) {
+      if (err instanceof TaskProcessingTimeoutError) {
+        if (task.retryCount <= task.maxRetries) {
+          task.retryCount++;
+          this.queueManager.emit('taskRetried', task);
+          clearTimeout(timeoutId);
+          this.log('error', `${task.id}:`, err);
+          return await this.processTaskWithTimeout(task);
+        } else {
+          this.log('error', `Task ${task.id} failed:`, err);
+          throw new Error(`Task ${task.id} failed after max retries: ${err.message}`);
+        }
+      } else {
+        throw err; // Re-throw unexpected errors
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   private async queueWorker() {
     while (this.workerActive) {
       const task = await this.queueManager['repository'].dequeue();
       if (task) {
         try {
-          await this.processTask(task);
+          await this.processTaskWithTimeout(task);
         } catch (err: any) {
           await this.handleTaskError(task, err);
         }

@@ -1,4 +1,6 @@
-# queue-manager
+# queue-manager-pro
+
+---
 
 A flexible, type-safe, and extensible task queue for Node.js and TypeScript.  
 Supports in-memory, file-based,redis , postgres (next-release) and custom persistent backends.  
@@ -17,6 +19,18 @@ management.
 - **Atomic dequeue for multi-process setups**
 
 ---
+
+## 🚧 Project Status: Actively Improving
+
+> **Note:**  
+> This library is currently under active development and continuous improvement.  
+> We encourage you to regularly update to the latest version to benefit from enhancements and
+> fixes.  
+> **At this stage, updates are not expected to introduce breaking changes or impact your existing
+> usage.**
+>
+> Please feel free to upgrade frequently. Once the API or functionality stabilizes, we will add a
+> special notice here.
 
 ## Installation
 

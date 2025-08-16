@@ -21,6 +21,7 @@ const singletonRegistry = new HandlerRegistry();
 
 const MAX_PROCESSING_TIME = 10 * 60 * 1000; // 10 minutes in milliseconds
 const MAX_RETRIES = 3; // Default max retries for tasks
+const MAX_RETRIES_LIMIT = 10; // max retries limit
 const DEFAULT_DELAY = 10000; // Default delay between task checks in milliseconds
 
 export class QueueManager<H extends HandlerMap> {
@@ -88,6 +89,10 @@ export class QueueManager<H extends HandlerMap> {
     const maxRetries = args.maxRetries || MAX_RETRIES;
     const maxProcessingTime = args.maxProcessingTime || MAX_PROCESSING_TIME;
 
+    if (maxRetries > MAX_RETRIES_LIMIT) {
+      throw new Error(`Max retries cannot be greater than ${MAX_RETRIES_LIMIT}`);
+    }
+
     const repository: QueueRepository = this.getBackendRepository(args.backend, maxRetries, maxProcessingTime);
     repository.logger = args.logger;
 
@@ -131,7 +136,7 @@ export class QueueManager<H extends HandlerMap> {
       case 'memory':
         return new MemoryQueueRepository(maxRetries, maxProcessingTime);
       case 'redis':
-        return new RedisQueueRepository(backend.redisClient, maxRetries, maxProcessingTime, backend.storageName);
+        return new RedisQueueRepository(backend.redisClient, maxRetries, maxProcessingTime, backend.storageName, backend.useLockKey);
       case 'custom':
         return backend.repository;
       default:
@@ -149,6 +154,10 @@ export class QueueManager<H extends HandlerMap> {
       skipOnPayloadError?: boolean;
     }
   ): Promise<Task<H>> {
+    if (options?.maxRetries && options?.maxRetries > MAX_RETRIES_LIMIT) {
+      throw new Error(`Max retries cannot be greater than ${MAX_RETRIES_LIMIT}`);
+    }
+
     const validationResult = this.validateHandlerParams(handler as string, payload);
     if (!validationResult.isValid) {
       if (options?.skipOnPayloadError) {
