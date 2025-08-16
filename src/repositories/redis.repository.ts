@@ -51,13 +51,21 @@ export class RedisQueueRepository extends BaseQueueRepository {
     throw new Error('saveTasks is not supported in RedisQueueRepository. Use updateTask or enqueue.');
   }
 
+  getScore(task: Task<HandlerMap>): number {
+    const PRIORITY_MULTIPLIER = 1000000; // Large multiplier to prioritize by priority first
+    // Calculate score based on priority and createdAt
+    // Higher priority first, then older (smaller createdAt)
+    return task.priority * PRIORITY_MULTIPLIER - new Date(task.createdAt).getTime();
+  }
+
   // Enqueue: Add task hash and push ID to pending queue
   async enqueue(task: Task<HandlerMap>): Promise<void> {
+    const score = this.getScore(task);
     const taskKey = `${this.storageName}:task:${task.id}`;
     await this.redis
       .multi()
       .set(taskKey, JSON.stringify(task))
-      .rpush(`${this.storageName}:queue:pending`, task.id.toString())
+      .zadd(`${this.storageName}:queue:pending`, score, task.id)
       // .zadd(`${this.storageName}:queue:pending`, task.priority || 0, task.id.toString())
       .exec();
   }
@@ -108,36 +116,36 @@ export class RedisQueueRepository extends BaseQueueRepository {
   override async dequeue(): Promise<Task<HandlerMap> | null> {
     try {
       // Get all pending tasks and sort them
-      const tasks = await this.loadTasks('pending');
-      const taskToProcess = [...tasks].sort(this.sortTasksToDequeue)[0];
-
-      const isLocked = await this.acquireLock(taskToProcess!.maxProcessingTime * taskToProcess!.maxRetries + 1000);
-      if (!isLocked) {
-        return null;
-      }
-
-      if (!taskToProcess) {
+      const [taskId] = await this.redis.zrevrange(`${this.storageName}:queue:pending`, 0, 0);
+      if (!taskId) {
         const processingTasks = await this.loadTasks('processing');
         await this.checkAndHandleStuckTasks(processingTasks);
         return null;
       }
 
-      const taskKey = `${this.storageName}:task:${taskToProcess.id}`;
-      const pendingQueueKey = `${this.storageName}:queue:pending`;
-      const processingQueueKey = `${this.storageName}:queue:processing`;
+      const taskStr = await this.redis.get(`${this.storageName}:queue:task:${taskId}`);
+      const taskToProcess = taskStr ? (JSON.parse(taskStr) as Task<HandlerMap>) : null;
+      if (!taskToProcess) {
+        return null; // Task not found
+      }
+
+      const isLocked = await this.acquireLock(taskToProcess.maxProcessingTime * taskToProcess.maxRetries + 1000);
+      if (!isLocked) {
+        return null;
+      }
 
       // Update task status
       taskToProcess.status = 'processing';
       taskToProcess.updatedAt = new Date();
 
-      // Atomically:
-      // 1. Remove from pending queue
-      // 2. Add to processing queue
-      // 3. Update task data
+      const taskKey = `${this.storageName}:task:${taskId}`;
+      const pendingQueueKey = `${this.storageName}:queue:pending`;
+      const processingQueueKey = `${this.storageName}:queue:processing`;
+
       await this.redis
         .multi()
-        .lrem(pendingQueueKey, 0, taskToProcess.id.toString())
-        .rpush(processingQueueKey, taskToProcess.id.toString())
+        .zrem(pendingQueueKey, taskId)
+        .rpush(processingQueueKey, taskId)
         .set(taskKey, JSON.stringify(taskToProcess))
         .exec();
 
