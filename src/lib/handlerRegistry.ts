@@ -1,4 +1,5 @@
 import type { HandlerMap } from '../types/index.js';
+import { HandlerNotRegisteredError } from '../util/errors.js';
 
 type Validator<P> = (payload: P) => { isValid: boolean; message: string | null };
 
@@ -23,8 +24,10 @@ export class HandlerRegistry<H extends HandlerMap> {
     this.handlers.set(name, { fn, options });
   }
 
-  get<K extends keyof H>(name: K): HandlerWithOptions<Parameters<H[K]>[0]> | undefined {
-    return this.handlers.get(name);
+  get<K extends keyof H>(name: K): HandlerWithOptions<Parameters<H[K]>[0]> {
+    const handler = this.handlers.get(name);
+    if (!handler) throw new HandlerNotRegisteredError(name as string);
+    return handler;
   }
 
   validateParams<K extends keyof H>(name: K, payload?: Parameters<H[K]>[0]): ParamValidatorReturnType {

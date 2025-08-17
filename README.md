@@ -3,7 +3,7 @@
 ---
 
 A flexible, type-safe, and extensible task queue for Node.js and TypeScript.  
-Supports in-memory, file-based,redis , postgres (next-release) and custom persistent backends.  
+Supports in-memory, file-based,redis , postgres and custom persistent backends.  
 Features handler registration, event-driven lifecycle, retries, priorities, and graceful worker
 management.
 

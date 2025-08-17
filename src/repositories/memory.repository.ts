@@ -1,5 +1,5 @@
 import type { HandlerMap, Task } from '../types/index.js';
-import { BaseQueueRepository } from './base.repositury.js';
+import { BaseQueueRepository } from './base.repository.js';
 import type { QueueRepository } from './repository.interface.js';
 
 export class MemoryQueueRepository extends BaseQueueRepository implements QueueRepository {

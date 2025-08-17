@@ -1,7 +1,8 @@
 import type { HandlerMap, Task } from '../types/index.js';
 import fs from 'fs/promises';
 import path from 'path';
-import { BaseQueueRepository } from './base.repositury.js';
+import { BaseQueueRepository } from './base.repository.js';
+import { FileRepositoryLoadError, FileRepositoryReadError, FileRepositoryTypeMismatchError } from '../util/errors.js';
 
 export class FileQueueRepository extends BaseQueueRepository {
   constructor(private readonly filePath: string, maxRetries: number, maxProcessingTime: number) {
@@ -12,7 +13,7 @@ export class FileQueueRepository extends BaseQueueRepository {
   async loadTasks(status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]> {
     try {
       if (path.extname(this.filePath) !== '.json') {
-        throw new Error('File path must end with .json');
+        throw new FileRepositoryTypeMismatchError();
       }
       const data = await fs.readFile(this.filePath, 'utf-8');
       const tasks: Task<HandlerMap>[] = JSON.parse(data || '[]');
@@ -23,9 +24,9 @@ export class FileQueueRepository extends BaseQueueRepository {
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
       if (error.code === 'ENOENT') {
-        throw new Error(`Error loading tasks from ${this.filePath}.\nThe ${error.path} does not exist.\nPlease create the directory first`);
+        throw new FileRepositoryLoadError(this.filePath, error.path ?? 'unknown');
       }
-      throw new Error('Error loading tasks from file: ' + error.message);
+      throw new FileRepositoryReadError(this.filePath, error.message);
     }
   }
 

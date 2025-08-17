@@ -1,7 +1,8 @@
 import type { HandlerMap, QueueBackendConfig, Task } from '../types/index.js';
-import { BaseQueueRepository } from './base.repositury.js';
+import { BaseQueueRepository } from './base.repository.js';
 import type { Redis } from 'ioredis';
 import crypto from 'crypto';
+import { RedisRepositorySaveTasksError } from '../util/errors.js';
 
 export class RedisQueueRepository extends BaseQueueRepository {
   private readonly redis: Redis;
@@ -48,7 +49,7 @@ export class RedisQueueRepository extends BaseQueueRepository {
   // Save tasks: Not used in Redis as we update individual tasks
   async saveTasks(_tasks: Task<HandlerMap>[], _status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]> {
     // No-op or throw error to indicate misuse
-    throw new Error('saveTasks is not supported in RedisQueueRepository. Use updateTask or enqueue.');
+    throw new RedisRepositorySaveTasksError();
   }
 
   getScore(task: Task<HandlerMap>): number {

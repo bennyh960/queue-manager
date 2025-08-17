@@ -1,5 +1,6 @@
 import type { Redis } from 'ioredis';
 import type { QueueRepository } from '../repositories/repository.interface.js';
+import type { Pool } from 'pg';
 
 export type HandlerMap = Record<string, (payload: any) => any | Promise<any>>;
 
@@ -36,8 +37,17 @@ export type QueueBackendConfig =
   | { type: 'file'; filePath: string }
   | { type: 'memory' }
   | { type: 'redis'; redisClient: Redis; storageName?: string; useLockKey?: boolean }
+  | { type: 'postgres'; pg: Pool; options?: PostgresOptions }
   | { type: 'custom'; repository: QueueRepository };
 
+export type PostgresOptions = {
+  tableName?: string;
+  schema?: string;
+  useMigrate?: boolean;
+  // customColumnNames?: Record<string, any>;
+  // additionalIndexes?: string[];
+  // additionalConstraints?: string[];
+};
 // util
 export interface LoggerLike {
   error(...args: any[]): void;

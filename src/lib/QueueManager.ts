@@ -16,6 +16,8 @@ import { warnings } from '../util/warnings.js';
 import { QueueWorker } from './queueWorker.js';
 import { RedisQueueRepository } from '../repositories/redis.repository.js';
 import { randomUUID } from 'crypto';
+import { PostgresQueueRepository } from '../repositories/postgres.repository.js';
+import { InvalidHandlerParamsError, MaxRetriesLimitError, UnknownBackendTypeError } from '../util/errors.js';
 
 const singletonRegistry = new HandlerRegistry();
 
@@ -90,7 +92,7 @@ export class QueueManager<H extends HandlerMap> {
     const maxProcessingTime = args.maxProcessingTime || MAX_PROCESSING_TIME;
 
     if (maxRetries > MAX_RETRIES_LIMIT) {
-      throw new Error(`Max retries cannot be greater than ${MAX_RETRIES_LIMIT}`);
+      throw new MaxRetriesLimitError(maxRetries);
     }
 
     const repository: QueueRepository = this.getBackendRepository(args.backend, maxRetries, maxProcessingTime);
@@ -135,12 +137,14 @@ export class QueueManager<H extends HandlerMap> {
         return new FileQueueRepository(backend.filePath, maxRetries, maxProcessingTime);
       case 'memory':
         return new MemoryQueueRepository(maxRetries, maxProcessingTime);
+      case 'postgres':
+        return new PostgresQueueRepository(backend.pg, maxRetries, maxProcessingTime, backend.options);
       case 'redis':
         return new RedisQueueRepository(backend.redisClient, maxRetries, maxProcessingTime, backend.storageName, backend.useLockKey);
       case 'custom':
         return backend.repository;
       default:
-        throw new Error('Unknown backend type');
+        throw new UnknownBackendTypeError();
     }
   }
 
@@ -155,7 +159,7 @@ export class QueueManager<H extends HandlerMap> {
     }
   ): Promise<Task<H>> {
     if (options?.maxRetries && options?.maxRetries > MAX_RETRIES_LIMIT) {
-      throw new Error(`Max retries cannot be greater than ${MAX_RETRIES_LIMIT}`);
+      throw new MaxRetriesLimitError(options.maxRetries);
     }
 
     const validationResult = this.validateHandlerParams(handler as string, payload);
@@ -163,7 +167,7 @@ export class QueueManager<H extends HandlerMap> {
       if (options?.skipOnPayloadError) {
         this.log('warn', `skipOnPayloadError set to true, but this task might fail due to invalid payload: ${validationResult.message}`);
       } else {
-        throw new Error(validationResult.message || 'Invalid handler parameters');
+        throw new InvalidHandlerParamsError(validationResult.message ?? undefined);
       }
     }
 
