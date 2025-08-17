@@ -16,9 +16,9 @@ const pool = new PG.Pool({ password: '123456', user: 'postgres', host: 'localhos
 const queue = QueueManager.getInstance<HandlerMap>({
   backend: { type: 'postgres', pg: pool, options: { schema: 'public', tableName: 'tasks' } },
   // backend: { type: 'file', filePath: 'data/tasks.json' },
-  logger: new DefaultLogger({ path: 'data/logs/queue.log', level: 'info' }),
+  logger: new DefaultLogger(),
   crashOnWorkerError: false,
-  delay: 100,
+  delay: 1000,
 });
 
 // register methods

@@ -15,7 +15,7 @@ const serverRun = async (queue: QueueManager<HandlerMap>) => {
     }
 
     // queue.addTaskToQueue("resizeImage",{imageUrl:""})
-    const task = await queue.addTaskToQueue(req.body.handler, req.body.payload, { maxRetries: 3, maxProcessingTime: 2000 });
+    const task = await queue.addTaskToQueue(req.body.handler, req.body.payload, req.body.options);
     res.status(201).json({ message: 'Task added', task });
   });
   app.get('/task/:id', async (req, res) => {
@@ -84,7 +84,7 @@ const serverRun = async (queue: QueueManager<HandlerMap>) => {
       return res.status(400).json({ message: 'Task status is already set to the requested status', task: existingTask });
     }
 
-    const task = await queue.updateTask(id, rest);
+    const task = await queue.updateTask(id, { ...rest, status });
     if (task) {
       res.status(200).json({ message: 'Task updated', task });
     } else {
