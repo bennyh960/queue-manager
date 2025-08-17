@@ -1,10 +1,14 @@
+import { HandlerNotRegisteredError } from '../util/errors.js';
 export class HandlerRegistry {
     handlers = new Map();
     register(name, fn, options) {
         this.handlers.set(name, { fn, options });
     }
     get(name) {
-        return this.handlers.get(name);
+        const handler = this.handlers.get(name);
+        if (!handler)
+            throw new HandlerNotRegisteredError(name);
+        return handler;
     }
     validateParams(name, payload) {
         const handler = this.get(name);

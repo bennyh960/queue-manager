@@ -38,7 +38,7 @@
     "dev": "nodemon --exec \"tsc --noEmit && tsx src/index.ts\"",
     "dev:server": "nodemon --config nodemon.server.json",
     "dev:fast": "nodemon --exec tsx src/index.ts",
-    "build": "tsc && rimraf dist/dev_only && rimraf dist/server.js && rimraf dist/server.d.ts",
+    "build": "tsc && rimraf dist/dev_only && rimraf dist/server.js && rimraf dist/server.js.map && rimraf dist/server.d.ts",
     "prepublishOnly": "npm run build",
     "build:watch": "tsc --watch",
     "start": "npm run build && node dist/index.js",
