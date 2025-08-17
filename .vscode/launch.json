@@ -15,11 +15,11 @@
       "console": "integratedTerminal"
     },
     {
-      "name": "Launch via NPM - SERVER",
+      "name": "Launch via NPM - Playground",
       "request": "launch",
-      "runtimeArgs": ["run", "dev:server"],
+      "runtimeArgs": ["run", "dev:playground"],
       "runtimeExecutable": "npm",
-      "program": "${workspaceFolder}/src/server.ts",
+      "program": "${workspaceFolder}/src/playground.ts",
       "skipFiles": ["<node_internals>/**"],
       "type": "node",
       "console": "integratedTerminal"

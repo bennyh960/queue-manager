@@ -1,6 +1,6 @@
 import express from 'express';
-import { QueueManager } from '../../../lib/QueueManager';
-import { HandlerMap, Task } from '../../../types';
+import type { HandlerMap } from '../../../types/index.js';
+import type { QueueManager } from '../../../index.js';
 
 const app = express();
 app.use(express.json());
@@ -64,12 +64,12 @@ const serverRun = async (queue: QueueManager<HandlerMap>) => {
   });
 
   app.post('/task/update', async (req, res) => {
-    const { id, status, log } = req.body;
-    if (!id || !status) {
-      return res.status(400).json({ message: 'Task ID and status are required' });
+    const { id, status, ...rest } = req.body;
+    if (!id) {
+      return res.status(400).json({ message: 'Task ID is required' });
     }
 
-    if (!['pending', 'completed', 'failed'].includes(status)) {
+    if (status && !['pending', 'completed', 'failed'].includes(status)) {
       const commonMessage = `you can only change status to 'pending', 'completed' or 'failed'`;
       const message =
         status === 'processing' ? `change status to processing is not allowed ,${commonMessage}` : `invalid status: ${commonMessage}`;
@@ -84,7 +84,7 @@ const serverRun = async (queue: QueueManager<HandlerMap>) => {
       return res.status(400).json({ message: 'Task status is already set to the requested status', task: existingTask });
     }
 
-    const task = await queue.updateTask(id, { status, log: log ?? `status updated manually` });
+    const task = await queue.updateTask(id, rest);
     if (task) {
       res.status(200).json({ message: 'Task updated', task });
     } else {
