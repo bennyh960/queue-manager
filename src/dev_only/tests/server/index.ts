@@ -1,5 +1,5 @@
 import express from 'express';
-import type { HandlerMap } from '../../../types/index.js';
+import type { HandlerMap, Task } from '../../../types/index.js';
 import type { QueueManager } from '../../../index.js';
 
 const app = express();

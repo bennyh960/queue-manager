@@ -193,19 +193,11 @@ export class QueueManager<H extends HandlerMap> {
   }
 
   async removeTask(id: number, hardDelete?: boolean): Promise<Task<H> | undefined> {
-    // this.emit('taskRemoved', task);
-    // return task;
-    // const task = this.getTaskById(id);
-    // if (task && task.status !== 'deleted') {
-    //   task.status = 'deleted';
-    //   await this.saveTasks();
-    //   // Optionally, remove from in-memory array:
-    //   // this.tasks = this.tasks.filter(t => t.id !== id);
-    // } else if (task && task.status === 'deleted') {
-    //   throw new Error(`Task with ID ${id} is already deleted`);
-    // } else {
-    //   throw new Error(`Task with ID ${id} not found`);
-    // }
+    const task = await this.repository.deleteTask(id.toString(), hardDelete);
+    if (task) {
+      this.emit('taskRemoved', task);
+    }
+    return task;
   }
 
   async updateTask(id: Task<HandlerMap>['id'], obj: Partial<Task<HandlerMap>>): Promise<Task<HandlerMap> | undefined> {

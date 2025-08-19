@@ -21,6 +21,7 @@ export abstract class BaseQueueRepository implements QueueRepository {
   abstract loadTasks(status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]>;
   abstract saveTasks(tasks: Task<HandlerMap>[], status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]>;
   abstract enqueue(task: Task<HandlerMap>): Promise<void>;
+  abstract deleteTask(id: string, hardDelete?: boolean): Promise<Task<HandlerMap> | undefined>;
 
   // same for in-memory and file repositories, others will be overridden
   async updateTask(id: string, obj: Partial<Task<HandlerMap>>): Promise<Task<HandlerMap> | undefined> {
