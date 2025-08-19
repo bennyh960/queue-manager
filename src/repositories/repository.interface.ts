@@ -12,4 +12,5 @@ export interface QueueRepository {
   MAX_PROCESSING_TIME: number;
   id: string;
   updateTask(id: string, obj: Partial<Task<HandlerMap>>): Promise<Task<HandlerMap> | undefined>;
+  deleteTask(id: string, hardDelete?: boolean): Promise<Task<HandlerMap> | undefined>;
 }

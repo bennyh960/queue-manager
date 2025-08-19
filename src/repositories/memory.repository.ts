@@ -9,6 +9,19 @@ export class MemoryQueueRepository extends BaseQueueRepository implements QueueR
     super(maxRetries, maxProcessingTime);
   }
 
+  async deleteTask(id: string, hardDelete?: boolean): Promise<Task<HandlerMap> | undefined> {
+    const index = this.tasks.findIndex(task => task.id === id);
+    if (index === -1) return undefined;
+
+    const deletedTask = this.tasks[index];
+    if (hardDelete) {
+      this.tasks.splice(index, 1);
+    } else if (deletedTask) {
+      deletedTask.status = 'deleted';
+    }
+    return deletedTask;
+  }
+
   // Storage-specific: return all tasks, optionally filter by status
   async loadTasks(status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]> {
     if (status) {

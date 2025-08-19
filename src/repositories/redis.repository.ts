@@ -3,8 +3,9 @@ import { BaseQueueRepository } from './base.repository.js';
 import type { Redis } from 'ioredis';
 import crypto from 'crypto';
 import { RedisRepositorySaveTasksError } from '../util/errors.js';
+import type { QueueRepository } from '../index.js';
 
-export class RedisQueueRepository extends BaseQueueRepository {
+export class RedisQueueRepository extends BaseQueueRepository implements QueueRepository {
   private readonly redis: Redis;
   storageName: string;
   useLockKey: boolean;
@@ -50,6 +51,29 @@ export class RedisQueueRepository extends BaseQueueRepository {
   async saveTasks(_tasks: Task<HandlerMap>[], _status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]> {
     // No-op or throw error to indicate misuse
     throw new RedisRepositorySaveTasksError();
+  }
+
+  async deleteTask(id: string, hardDelete?: boolean): Promise<Task<HandlerMap> | undefined> {
+    const taskKey = `${this.storageName}:task:${id}`;
+    const taskStr = await this.redis.get(taskKey);
+    if (!taskStr) return undefined;
+
+    const task = JSON.parse(taskStr) as Task<HandlerMap>;
+    if (hardDelete) {
+      // Remove from all queues and delete the task
+      const multi = this.redis.multi();
+      ['pending', 'processing', 'failed', 'completed'].forEach(status => {
+        multi.lrem(`${this.storageName}:queue:${status}`, 0, id);
+      });
+      multi.del(taskKey);
+      await multi.exec();
+    } else {
+      // Soft delete: just update status
+      task.status = 'deleted';
+      task.updatedAt = new Date();
+      await this.redis.set(taskKey, JSON.stringify(task));
+    }
+    return task;
   }
 
   getScore(task: Task<HandlerMap>): number {

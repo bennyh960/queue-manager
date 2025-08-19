@@ -27,6 +27,14 @@ export class PostgresQueueRepository extends BaseQueueRepository implements Queu
     }));
   }
 
+  async deleteTask(id: string, hardDelete?: boolean): Promise<Task<HandlerMap> | undefined> {
+    const query = hardDelete
+      ? `DELETE FROM "${this.schema}"."${this.tableName}" WHERE id = $1 RETURNING *`
+      : `UPDATE "${this.schema}"."${this.tableName}" SET status = 'deleted' WHERE id = $1 RETURNING *`;
+    const res = await this.pg.query(query, [id]);
+    return res.rows[0] ? this.snakeToCamelObject(res.rows[0]) : undefined;
+  }
+
   override saveTasks(tasks: Task<HandlerMap>[], status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]> {
     throw new Error('Method not implemented.');
   }

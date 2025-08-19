@@ -192,29 +192,21 @@ export class QueueManager<H extends HandlerMap> {
     return task;
   }
 
-  //todo async removeTask(id: number): Promise<Task<H> | undefined> {
-  //   const task = this.getTaskById(id);
-  //   if (task && task.status !== 'deleted') {
-  //     task.status = 'deleted';
-  //     await this.saveTasks();
-  //     // Optionally, remove from in-memory array:
-  //     // this.tasks = this.tasks.filter(t => t.id !== id);
-  //     this.emit('taskRemoved', task);
-  //     return task;
-  //   } else if (task && task.status === 'deleted') {
-  //     throw new Error(`Task with ID ${id} is already deleted`);
-  //   } else {
-  //     throw new Error(`Task with ID ${id} not found`);
-  //   }
-  // }
-
-  //todo public async purgeDeletedTasks() {
-  //   const tasksToPurge = this.tasks.filter(task => task.status === 'deleted');
-  //   this.tasks = this.tasks.filter(task => task.status !== 'deleted');
-  //   await this.saveTasks();
-  //   this.emit('tasksPurged', tasksToPurge);
-  //   this.log('info', 'Purged deleted tasks from the queue');
-  // }
+  async removeTask(id: number, hardDelete?: boolean): Promise<Task<H> | undefined> {
+    // this.emit('taskRemoved', task);
+    // return task;
+    // const task = this.getTaskById(id);
+    // if (task && task.status !== 'deleted') {
+    //   task.status = 'deleted';
+    //   await this.saveTasks();
+    //   // Optionally, remove from in-memory array:
+    //   // this.tasks = this.tasks.filter(t => t.id !== id);
+    // } else if (task && task.status === 'deleted') {
+    //   throw new Error(`Task with ID ${id} is already deleted`);
+    // } else {
+    //   throw new Error(`Task with ID ${id} not found`);
+    // }
+  }
 
   async updateTask(id: Task<HandlerMap>['id'], obj: Partial<Task<HandlerMap>>): Promise<Task<HandlerMap> | undefined> {
     try {

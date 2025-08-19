@@ -96,7 +96,8 @@ queue.startWorker();
 ### `QueueManager.getInstance(options)`
 
 - **Options:**
-  - `backend`: `{ type: 'file' | 'memory' | 'postgres' | 'redis'| 'custom', ... }` instances
+  - `backend`: `{ type: 'file' | 'memory' | 'postgres' | 'redis'| 'custom', ... }` instances , each
+    backend type has its own specific options.
   - `delay`: Polling interval in ms (default: 10000)
   - `logger`: Optional logger - support common loggers libraries and 'console'
   - `singleton`: Use singleton instance (default: true)
@@ -107,6 +108,15 @@ queue.startWorker();
   - `crashOnWorkerError`: if `true` it will stop the worker and throw the error (no event emission)
     else Emit the taskFailed event for external handlers.. (default: false)
 
+#### `Storage Backends`
+
+- Memory: Fast, non-persistent (lost on restart)
+- File: local JSON file-based, atomic writes . options: (`filePath:string`)
+- Redis: using 'ioredis' instance , `{redisClient:Redis, storageName?:string, useLockKey?:boolean}`
+- Postgres: using 'pg' pool instance ,
+`{pg:pg.Pool , {tableName?:string,schema?:string, useMigrate:boolean}}`
+<!-- - Custom: Plug in your own repository (e.g.MongoDB) -  -->
+
 ---
 
 ### `queue.register(name, handler, options?)`
@@ -116,8 +126,11 @@ queue.startWorker();
 
   - `name`: string — Handler name
   - `handler`: function — Handler function `(payload) => any`
-  - `options`(optional): -`maxRetries?` : number - same as the instance 'maxRetries' but it will
-    override the instance 'maxRetries' for the particular handler.
+  - `options`(optional):
+
+    - `maxRetries?` : number - same as the instance 'maxRetries' but it will override the instance
+      'maxRetries' for the particular handler.
+
     - `maxProcessingTime`:number - same as instance 'maxProcessingTime' but it will override the
       instance 'maxProcessingTime' for the particular handler.
     - `useAutoSchema?`:boolean - using regex to identify handler params - cover 90% of cases .
@@ -129,9 +142,12 @@ queue.startWorker();
   [register](https://github.com/bennyh960/queue-manager/blob/main/examples/handlerRegister.md) for
   usage examples._**
 
+---
+
 ### `queue.addTaskToQueue(handler, payload, options?)`
 
-- Add a new task to the queue.
+Add a new task to the queue.
+
 - **Parameters:**
   - `handler`: string — Name of the registered handler
   - `payload`: object — args for the handler (type-checked)
@@ -180,16 +196,26 @@ queue.startWorker();
 
 ---
 
-### `queue.getAllTasks(), queue.getTaskById(id)`
+### More API methods
 
-- Inspect current tasks.
+#### `queue.getAllTasks(status?)`
 
-### `Storage Backends`
+- Inspect all current tasks if status is undefined else inspect all tasks with specified status.
 
-- Memory: Fast, non-persistent (lost on restart)
-- File: local JSON file-based, atomic writes
-- Custom: Plug in your own repository (e.g., Redis, MongoDB) - support `multi-atomic` , can safely
-  dequeue 1 task at the time.
+#### `queue.getTaskById(id)`
+
+- inspect task by id
+
+#### `queue.updateTask(id,updatedProperties)`
+
+- update specific task
+- updatedProperties - (Partial<Task<handlerMap>>) the fields to update
+
+#### `queue.removeTask(id,hardDelete?)`
+
+- delete task by id
+- hardDelete (boolean, default:false) - if true it will remove the task permanently , else the
+  status will be 'deleted'
 
 ### `Type Safety`
 

@@ -3,10 +3,26 @@ import fs from 'fs/promises';
 import path from 'path';
 import { BaseQueueRepository } from './base.repository.js';
 import { FileRepositoryLoadError, FileRepositoryReadError, FileRepositoryTypeMismatchError } from '../util/errors.js';
+import type { QueueRepository } from './repository.interface.js';
 
-export class FileQueueRepository extends BaseQueueRepository {
+export class FileQueueRepository extends BaseQueueRepository implements QueueRepository {
   constructor(private readonly filePath: string, maxRetries: number, maxProcessingTime: number) {
     super(maxRetries, maxProcessingTime);
+  }
+
+  async deleteTask(id: string, hardDelete?: boolean): Promise<Task<HandlerMap> | undefined> {
+    const tasks = await this.loadTasks();
+    const index = tasks.findIndex(task => task.id === id);
+    if (index === -1) return undefined;
+
+    const deletedTask = tasks[index];
+    if (hardDelete) {
+      tasks.splice(index, 1);
+    } else if (deletedTask) {
+      deletedTask.status = 'deleted';
+    }
+    await this.saveTasks(tasks);
+    return deletedTask;
   }
 
   // Load tasks from file, optionally filter by status
