@@ -2,7 +2,7 @@ import type { Redis } from 'ioredis';
 import type { QueueRepository } from '../repositories/repository.interface.js';
 import type { Pool } from 'pg';
 
-export type HandlerMap = Record<string, (payload: any) => any | Promise<any>>;
+export type HandlerMap = Record<string, (payload: any) => Promise<any>>;
 
 export interface TaskBase {
   id: string;

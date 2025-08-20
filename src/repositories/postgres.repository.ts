@@ -44,7 +44,7 @@ export class PostgresQueueRepository extends BaseQueueRepository implements Queu
 
     const result: Record<string, any> = {};
     for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      if (Object.hasOwn(obj, key)) {
         result[toCamel(key)] = obj[key];
       }
     }

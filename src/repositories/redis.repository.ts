@@ -25,9 +25,15 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
     this.dequeueLockName = `${this.storageName}:dequeue-lock`;
   }
 
-  setDequeueLockName(name: string): void {
-    // todo: edit the lock name in redis also
-    this.dequeueLockName = `${this.storageName}:${name}`;
+  async setDequeueLockName(name: string): Promise<void> {
+    const newName = `${this.storageName}:${name}`;
+    const success = await this.redis.rename(this.dequeueLockName, newName);
+    if (!success) {
+      throw new Error(`Failed to rename dequeue lock: ${this.dequeueLockName} to ${newName}`);
+    }
+
+    this.dequeueLockName = newName;
+    this.logger?.info(`Dequeue lock name set to: ${this.dequeueLockName}.`);
   }
 
   // Load all tasks by status

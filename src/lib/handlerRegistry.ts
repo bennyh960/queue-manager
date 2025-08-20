@@ -66,8 +66,10 @@ export class HandlerRegistry<H extends HandlerMap> {
 
     const fnStr = handler.fn.toString().replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, '');
     // Match function ( { key1, key2 } ) or ( {key1, key2} )
-    const match = fnStr.match(/\{\s*([^}]*)\s*\}/);
-    if (!match || !match[1]) {
+    const paramRegex = /\{\s*([^}]*)\s*\}/;
+    const match = paramRegex.exec(fnStr);
+
+    if (!match?.[1]) {
       return { params: undefined, ...handler };
     }
     // Split by comma, trim spaces, remove default values

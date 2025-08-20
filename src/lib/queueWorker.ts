@@ -99,8 +99,8 @@ export class QueueWorker<H extends HandlerMap> {
   }
 
   private log(level: keyof LoggerLike, ...args: any[]) {
-    if (this.logger && this.logger[level]) {
-      this.logger[level]?.(...args);
+    if (this.logger?.[level]) {
+      this.logger[level](...args);
     }
   }
 }

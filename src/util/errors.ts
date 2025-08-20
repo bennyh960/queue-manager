@@ -61,7 +61,8 @@ class CustomError extends Error {
   override toString(): string {
     // stack
     const stackLines = this.stack?.split('\n');
-    const userStack = stackLines?.find(line => line.match(/\.(ts|js):\d+:\d+/));
+    const stackRegex = /\.(ts|js):\d+:\d+/;
+    const userStack = stackLines?.find(line => stackRegex.exec(line));
     const errorStack = userStack ? `At: ${userStack.trim()}` : 'No stack trace available';
     return `${errorStack}`;
   }

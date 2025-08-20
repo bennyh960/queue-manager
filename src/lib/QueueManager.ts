@@ -185,7 +185,7 @@ export class QueueManager<H extends HandlerMap> {
       maxRetries: options?.maxRetries ?? handlerEntry?.options?.maxRetries ?? this.MAX_RETRIES,
       maxProcessingTime: options?.maxProcessingTime ?? handlerEntry?.options?.maxProcessingTime ?? this.MAX_PROCESSING_TIME,
       retryCount: 0,
-      priority: options?.priority ?? 0, //todo: bug with schema optional/default should not show ts error
+      priority: options?.priority ?? 0,
     };
     await this.repository.enqueue(task as Task<HandlerMap>);
 
@@ -260,8 +260,8 @@ export class QueueManager<H extends HandlerMap> {
   }
 
   private log(level: keyof LoggerLike, ...args: any[]) {
-    if (this.logger && this.logger[level]) {
-      this.logger[level]?.(...args);
+    if (this.logger?.[level]) {
+      this.logger[level](...args);
     }
   }
 }
