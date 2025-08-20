@@ -20,17 +20,23 @@ management.
 
 ---
 
-## 🚧 Project Status: Actively Improving
+> **Notice:**  
+> Versions prior to `v1.0.12` are no longer actively maintained.  
+> **_To stay up to date, simply upgrade to the latest release._**  
+> _No other actions or code changes are required—just update your package version for the best
+> experience._
 
-> **Note:**  
-> This library is currently under active development and continuous improvement.  
+<!-- ## 🚧 Project Status: Actively Improving
+
+> **Note:**
+> This library is currently under active development and continuous improvement.
 > We encourage you to regularly update to the latest version to benefit from enhancements and
-> fixes.  
+> fixes.
 > **At this stage, updates are not expected to introduce breaking changes or impact your existing
 > usage.**
 >
 > Please feel free to upgrade frequently. Once the API or functionality stabilizes, we will add a
-> special notice here.
+> special notice here. -->
 
 ## Installation
 
