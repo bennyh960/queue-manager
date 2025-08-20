@@ -38,7 +38,9 @@ export type QueueBackendConfig =
   | { type: 'memory' }
   | { type: 'redis'; redisClient: Redis; storageName?: string; useLockKey?: boolean }
   | { type: 'postgres'; pg: Pool; options?: PostgresOptions }
-  | { type: 'custom'; repository: QueueRepository };
+  | { type: 'custom'; repository: CustomQueueRepositoryProps };
+
+export type CustomQueueRepositoryProps = Omit<QueueRepository, 'logger' | 'emitEvent' | 'init' | 'id'>;
 
 export type PostgresOptions = {
   tableName?: string;

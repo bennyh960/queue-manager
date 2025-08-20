@@ -18,6 +18,7 @@ import { RedisQueueRepository } from '../repositories/redis.repository.js';
 import { randomUUID } from 'crypto';
 import { PostgresQueueRepository } from '../repositories/postgres.repository.js';
 import { InvalidHandlerParamsError, MaxRetriesLimitError, UnknownBackendTypeError } from '../util/errors.js';
+import { CustomQueueRepository } from '../repositories/custom.repository.js';
 
 const singletonRegistry = new HandlerRegistry();
 
@@ -83,7 +84,7 @@ export class QueueManager<H extends HandlerMap> {
     this.crashOnWorkerError = crashOnWorkerError ?? false;
 
     if (backend.type === 'custom') {
-      this.log('warn', warnings.atomicProcessWarning);
+      this.log('warn', warnings.customRepository);
     }
   }
 
@@ -142,7 +143,7 @@ export class QueueManager<H extends HandlerMap> {
       case 'redis':
         return new RedisQueueRepository(backend.redisClient, maxRetries, maxProcessingTime, backend.storageName, backend.useLockKey);
       case 'custom':
-        return backend.repository;
+        return new CustomQueueRepository(backend.repository);
       default:
         throw new UnknownBackendTypeError();
     }

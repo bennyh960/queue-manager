@@ -1,21 +1,3 @@
-const atomicProcessWarning = `
-==========================================================
-⚠️  WARNING: Custom Backend Selected! ⚠️
-==========================================================
-You have configured the queue with a custom backend.
-It is your responsibility to ensure that dequeue and task update operations
-are performed atomically to prevent race conditions and data corruption.
-
-Recommended Actions:
-- Use transactions or atomic commands in your backend.
-- Consult the documentation for safe dequeue patterns.
-- If unsure, contact your system architect or use a supported atomic backend.
-
-[QueueManager] Initialization continues, but unsafe dequeue logic
-may lead to duplicate processing or lost tasks.
-==========================================================
-`;
-
 const handlerRegistryWarning = `
 ===================================================================================================
 ⚠️  WARNING: "$1" handler registered without a schema! ⚠️
@@ -26,7 +8,17 @@ If it does expect a payload, omitting a schema may allow invalid or unexpected d
 ===================================================================================================
 `;
 
+const customRepository = `
+===================================================================================================
+⚠️  WARNING: selected custom repository! ⚠️
+===================================================================================================
+You selected to manage your own repository , it means all the queue operations (enqueue, dequeue, etc.)
+are your responsibility. Ensure that these operations are implemented correctly to avoid data loss or corruption.
+Be aware that these operations must be performed atomically to prevent race conditions and data corruption.
+===================================================================================================
+`;
+
 export const warnings = {
-  atomicProcessWarning,
   handlerRegistryWarning,
+  customRepository,
 };

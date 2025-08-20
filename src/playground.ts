@@ -7,6 +7,23 @@ import { MiniSchema as M, ValidationError } from './dev_only/schema.util.js';
 import { FileRepositoryReadError, TaskMaxRetriesExceededError } from './util/errors.js';
 import { QueueManager } from './index.js';
 import serverRun from './dev_only/tests/server/index.js';
+import { MemoryQueueRepository } from './repositories/memory.repository.js';
+
+// const memoryRepo = new MemoryQueueRepository(3, 10000);
+// const customRepository = {
+//       deleteTask: memoryRepo.deleteTask.bind(memoryRepo),
+//       loadTasks: memoryRepo.loadTasks.bind(memoryRepo),
+//       saveTasks: memoryRepo.saveTasks.bind(memoryRepo),
+//       enqueue: memoryRepo.enqueue.bind(memoryRepo),
+//       dequeue: async () => {
+//         throw new Error('Not implemented');
+//       },
+//       MAX_PROCESSING_TIME: 10000,
+//       MAX_RETRIES: 3,
+//       updateTask: async () => {
+//         throw new Error('Not implemented');
+//       },
+//     }
 
 // persistence connection
 const pool = new PG.Pool({ password: '123456', user: 'postgres', host: 'localhost', database: 'queue_manager', port: 5432 });
@@ -14,8 +31,12 @@ const pool = new PG.Pool({ password: '123456', user: 'postgres', host: 'localhos
 
 // init queue manager
 const queue = QueueManager.getInstance<HandlerMap>({
-  backend: { type: 'postgres', pg: pool, options: { schema: 'public', tableName: 'tasks' } },
-  // backend: { type: 'file', filePath: 'data/tasks.json' },
+  // backend: { type: 'postgres', pg: pool, options: { schema: 'public', tableName: 'tasks' } },
+  backend: { type: 'file', filePath: 'data/tasks.json' },
+  // backend: {
+  //   type: 'custom',
+  //   repository: customRepository,
+  // },
   logger: new DefaultLogger(),
   crashOnWorkerError: false,
   delay: 1000,
