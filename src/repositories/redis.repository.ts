@@ -154,7 +154,7 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
         return null;
       }
 
-      const taskStr = await this.redis.get(`${this.storageName}:queue:task:${taskId}`);
+      const taskStr = await this.redis.get(`${this.storageName}:task:${taskId}`);
       const taskToProcess = taskStr ? (JSON.parse(taskStr) as Task<HandlerMap>) : null;
       if (!taskToProcess) {
         return null; // Task not found
