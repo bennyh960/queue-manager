@@ -141,7 +141,7 @@ export class QueueManager<H extends HandlerMap> {
       case 'postgres':
         return new PostgresQueueRepository(backend.pg, maxRetries, maxProcessingTime, backend.options);
       case 'redis':
-        return new RedisQueueRepository(backend.redisClient, maxRetries, maxProcessingTime, backend.storageName, backend.useLockKey);
+        return new RedisQueueRepository(backend.redisClient, maxRetries, maxProcessingTime, backend.options);
       case 'custom':
         return new CustomQueueRepository(backend.repository);
       default:
@@ -262,6 +262,14 @@ export class QueueManager<H extends HandlerMap> {
   private log(level: keyof LoggerLike, ...args: any[]) {
     if (this.logger?.[level]) {
       this.logger[level](...args);
+    }
+  }
+
+  public async runMigration(): Promise<void> {
+    if (this.repository instanceof PostgresQueueRepository) {
+      await this.repository.postgresMigrateTasksTable();
+    } else {
+      throw new Error(`runMigration is not available for your select backend type ${this.backend.type}`);
     }
   }
 }

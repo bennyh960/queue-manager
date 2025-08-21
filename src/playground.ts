@@ -27,16 +27,17 @@ import { MemoryQueueRepository } from './repositories/memory.repository.js';
 
 // persistence connection
 const pool = new PG.Pool({ password: '123456', user: 'postgres', host: 'localhost', database: 'queue_manager', port: 5432 });
-// const redis = new Redis({ host: 'localhost', port: 6380 });
+const redis = new Redis({ host: 'localhost', port: 6380 });
 
 // init queue manager
 const queue = QueueManager.getInstance<HandlerMap>({
   // backend: { type: 'postgres', pg: pool, options: { schema: 'public', tableName: 'tasks' } },
-  backend: { type: 'file', filePath: 'data/tasks.json' },
+  // backend: { type: 'file', filePath: 'data/tasks.json' },
   // backend: {
   //   type: 'custom',
   //   repository: customRepository,
   // },
+  backend: { type: 'redis', redisClient: redis, options: { storageName: 'my-queue', useLockKey: true } },
   logger: new DefaultLogger(),
   crashOnWorkerError: false,
   delay: 1000,

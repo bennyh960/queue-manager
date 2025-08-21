@@ -120,8 +120,13 @@ queue.startWorker();
 - File: local JSON file-based, atomic writes . options: (`filePath:string`)
 - Redis: using 'ioredis' instance , `{redisClient:Redis, storageName?:string, useLockKey?:boolean}`
 - Postgres: using 'pg' pool instance ,
-`{pg:pg.Pool , {tableName?:string,schema?:string, useMigrate:boolean}}`
-<!-- - Custom: Plug in your own repository (e.g.MongoDB) -  -->
+  `{pg:pg.Pool , {tableName?:string,schema?:string, useMigrate:boolean}}`
+- Custom : `CustomQueueRepositoryProps type` (see examples)
+  <!-- - Custom: Plug in your own repository (e.g.MongoDB) -  -->
+
+  **_See
+  [repositories examples](https://github.com/bennyh960/queue-manager/blob/main/examples/repositories.example.md)
+  for usage examples._**
 
 ---
 

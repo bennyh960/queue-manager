@@ -15,13 +15,13 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
     redisClient: Redis,
     maxRetries: number,
     maxProcessingTime: number,
-    storageName?: Extract<QueueBackendConfig, { type: 'redis' }>['storageName'],
-    useLockKey?: Extract<QueueBackendConfig, { type: 'redis' }>['useLockKey']
+
+    options?: Extract<QueueBackendConfig, { type: 'redis' }>['options']
   ) {
     super(maxRetries, maxProcessingTime);
     this.redis = redisClient;
-    this.storageName = storageName || 'queue-manager';
-    this.useLockKey = useLockKey || false;
+    this.storageName = options?.storageName || 'queue-manager';
+    this.useLockKey = options?.useLockKey || false;
     this.dequeueLockName = `${this.storageName}:dequeue-lock`;
   }
 

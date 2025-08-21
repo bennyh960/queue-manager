@@ -144,6 +144,10 @@ export class PostgresQueueRepository extends BaseQueueRepository implements Queu
       client.release(); // Return the client to the pool
     }
   }
+
+  async postgresMigrateTasksTable(): Promise<void> {
+    await postgresMigrateTasksTable(this.pg, this.options);
+  }
 }
 
 // postgres migration:
@@ -162,7 +166,10 @@ const defaultColumns: Record<string, string> = {
   priority: 'INT NOT NULL',
 };
 
-export async function migrateTasksTable(pg: PostgresBackendConfig['pg'], options: PostgresBackendConfig['options'] = {}): Promise<void> {
+export async function postgresMigrateTasksTable(
+  pg: PostgresBackendConfig['pg'],
+  options: PostgresBackendConfig['options'] = {}
+): Promise<void> {
   const schema = options.schema || 'public';
   const tableName = options.tableName || 'tasks';
 
