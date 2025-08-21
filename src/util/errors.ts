@@ -59,6 +59,10 @@ class CustomError extends Error {
   }
 
   override toString(): string {
+    // Only use custom toString in non-test environments
+    if (process.env.NODE_ENV === 'test') {
+      return super.toString(); // Use default Error toString in tests
+    }
     // stack
     const stackLines = this.stack?.split('\n');
     const stackRegex = /\.(ts|js):\d+:\d+/;
