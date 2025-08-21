@@ -4,6 +4,9 @@ export default {
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
 
+  // Enable Jest globals (important!)
+  injectGlobals: true,
+
   // Modern way to configure ts-jest (no longer using globals)
   transform: {
     '^.+\\.ts$': [

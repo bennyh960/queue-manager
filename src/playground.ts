@@ -1,84 +1,71 @@
-import type { HandlerMap, Task } from './types/index.js';
-import { Redis } from 'ioredis'; // ✅ This works with CommonJS-style exports
-import { DefaultLogger } from './dev_only/logger.js';
-import PG from 'pg';
-import { fakeMethods, type HandlerMapFakeMethods } from './dev_only/fake.methods.js';
-import { MiniSchema as M, ValidationError } from './dev_only/schema.util.js';
-import { FileRepositoryReadError, TaskMaxRetriesExceededError } from './util/errors.js';
+// serverRun(queue);
+
+import { Redis } from 'ioredis';
 import { QueueManager } from './index.js';
-import serverRun from './dev_only/tests/server/index.js';
-import { MemoryQueueRepository } from './repositories/memory.repository.js';
 
-// const memoryRepo = new MemoryQueueRepository(3, 10000);
-// const customRepository = {
-//       deleteTask: memoryRepo.deleteTask.bind(memoryRepo),
-//       loadTasks: memoryRepo.loadTasks.bind(memoryRepo),
-//       saveTasks: memoryRepo.saveTasks.bind(memoryRepo),
-//       enqueue: memoryRepo.enqueue.bind(memoryRepo),
-//       dequeue: async () => {
-//         throw new Error('Not implemented');
-//       },
-//       MAX_PROCESSING_TIME: 10000,
-//       MAX_RETRIES: 3,
-//       updateTask: async () => {
-//         throw new Error('Not implemented');
-//       },
-//     }
-
-// persistence connection
-const pool = new PG.Pool({ password: '123456', user: 'postgres', host: 'localhost', database: 'queue_manager', port: 5432 });
-const redis = new Redis({ host: 'localhost', port: 6380 });
-
-// init queue manager
-const queue = QueueManager.getInstance<HandlerMap>({
-  // backend: { type: 'postgres', pg: pool, options: { schema: 'public', tableName: 'tasks' } },
-  // backend: { type: 'file', filePath: 'data/tasks.json' },
-  // backend: {
-  //   type: 'custom',
-  //   repository: customRepository,
-  // },
-  backend: { type: 'redis', redisClient: redis, options: { storageName: 'my-queue', useLockKey: true } },
-  logger: new DefaultLogger(),
-  crashOnWorkerError: false,
-  delay: 1000,
+const redisClient = new Redis({
+  host: 'localhost',
+  port: 6380, //docker
 });
 
-// register methods
-queue.register('doSomething', fakeMethods.doSomething);
-queue.register('doSomethingWithError', fakeMethods.doSomethingWithError);
-queue.register('sendEmail', fakeMethods.sendEmail, {
-  maxRetries: 3,
+const processedTasks: string[] = [];
+const processingOrder: string[] = [];
 
-  // maxProcessingTime: 2000,
-  useAutoSchema: true,
-  paramSchema: payload => {
-    try {
-      const EmailSchema = M.object({
-        email: M.regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email format'),
-      });
+const raceHandler = async ({ email, subject }: { email: string; subject: string }) => {
+  console.log('🚀 Handler called with:', { email, subject });
+  processingOrder.push(`start-${email}`);
+  await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
+  processedTasks.push(email);
+  processingOrder.push(`end-${email}`);
+  return `Processed ${email}`;
+};
 
-      EmailSchema.validateAll(payload);
+const storageKey = 'test-1';
 
-      return { isValid: true, message: null };
-    } catch (error: any) {
-      const errors = error instanceof ValidationError ? error.errors : [{ path: 'unknown', message: JSON.stringify(error) }];
+const testRaceCondtions = async () => {
+  const qm1 = QueueManager.getInstance({
+    backend: { type: 'redis', redisClient, options: { storageName: storageKey, useLockKey: true } },
+    delay: 10000,
+    singleton: false,
+    logger: console,
+  });
 
-      return {
-        isValid: false,
-        message: errors.map(e => e.message).join(', '),
-      };
-    }
-  },
-});
+  const qm2 = QueueManager.getInstance({
+    backend: { type: 'redis', redisClient, options: { storageName: storageKey, useLockKey: true } },
+    delay: 10000,
+    singleton: false,
+    logger: console,
+  });
 
-queue.register('resizeImage', fakeMethods.resizeImage, {
-  paramSchema: payload => {
-    if (!payload.imageUrl) {
-      return { isValid: false, message: 'imageUrl is required', source: 'param-schema' };
-    }
-    const isValid = typeof payload.imageUrl === 'string';
-    return { isValid, message: isValid ? null : 'Invalid imageUrl' };
-  },
-});
+  // Register handlers
+  qm1.register('emailHandler', raceHandler, { useAutoSchema: true });
+  qm2.register('emailHandler', raceHandler, { useAutoSchema: true });
 
-serverRun(queue);
+  // Add tasks
+  for (let i = 0; i < 5; i++) {
+    const task = await qm1.addTaskToQueue('emailHandler', {
+      email: `task-${i}@test.com`,
+      subject: `Subject ${i}`,
+    });
+  }
+
+  // Start workers
+  console.log('🏃 Starting both workers...');
+  await Promise.all([qm1.startWorker(), qm2.startWorker()]);
+
+  // Wait and check Redis during processing
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  console.log('🔍 Checking Redis during processing...');
+  const keysDuringProcess = await redisClient.keys(`${storageKey}*`);
+  console.log('📝 Redis keys during processing:', keysDuringProcess);
+
+  await new Promise(resolve => setTimeout(resolve, 10000));
+
+  console.log('📊 Final processedTasks:', processedTasks);
+  console.log('📊 Processing order:', processingOrder);
+
+  await Promise.all([qm1.stopWorker(), qm2.stopWorker()]);
+};
+
+testRaceCondtions();
