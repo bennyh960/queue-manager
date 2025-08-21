@@ -26,6 +26,12 @@ management.
 > _No other actions or code changes are required—just update your package version for the best
 > experience._
 
+---
+
+#### 🚨 CRITICAL BUG FIX in redis - v1.0.15
+
+> ⚠️ URGENT UPDATE REQUIRED : Update immediately if using Redis backend:
+
 <!-- ## 🚧 Project Status: Actively Improving
 
 > **Note:**
