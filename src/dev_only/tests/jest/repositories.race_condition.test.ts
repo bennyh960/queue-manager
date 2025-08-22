@@ -177,15 +177,15 @@ describe('Race Conditions - Multi-Worker Processing', () => {
   });
 
   describe('Postgres : Race Conditions', () => {
-    beforeAll(async () => {
-      try {
-        await pgPool.connect();
-        logger.info('✅ PostgreSQL available for race condition tests');
-      } catch (error) {
-        logger.warn('⚠️ PostgreSQL not available, skipping PostgreSQL race condition tests', error);
-        pgPool?.end();
-      }
-    });
+    // beforeAll(async () => {
+    //   try {
+    //     await pgPool.connect();
+    //     logger.info('✅ PostgreSQL available for race condition tests');
+    //   } catch (error) {
+    //     logger.warn('⚠️ PostgreSQL not available, skipping PostgreSQL race condition tests', error);
+    //     pgPool?.end();
+    //   }
+    // });
 
     // afterAll(async () => {
     //   if (pgPool) {

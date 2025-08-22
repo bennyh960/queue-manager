@@ -101,6 +101,7 @@ export const pgPool = new Pool({
   database: 'queue_manager',
   password: '123456',
   port: 5432,
+  max: 100,
 });
 
 export const cleanRedisKeys = async (storageKey: string) => {
