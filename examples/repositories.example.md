@@ -242,7 +242,6 @@ const queue = QueueManager.getInstance({
     redisClient,
     options: {
       storageName: 'my-application-queue',
-      useLockKey: true, // Enable for multi-process environments
     },
   },
 });
@@ -250,11 +249,10 @@ const queue = QueueManager.getInstance({
 
 ### Configuration Options
 
-| Option        | Type      | Description                     | Default         |
-| ------------- | --------- | ------------------------------- | --------------- |
-| `redisClient` | `Redis`   | ioredis client instance         | **Required**    |
-| `storageName` | `string`  | Redis key prefix for queue data | `queue-storage` |
-| `useLockKey`  | `boolean` | Enable distributed locking      | `false`         |
+| Option        | Type     | Description                     | Default         |
+| ------------- | -------- | ------------------------------- | --------------- |
+| `redisClient` | `Redis`  | ioredis client instance         | **Required**    |
+| `storageName` | `string` | Redis key prefix for queue data | `queue-storage` |
 
 <!-- ### Redis Cluster Support
 
@@ -271,7 +269,6 @@ const queue = QueueManager.getInstance({
   backend: {
     type: 'redis',
     redisClient: redisCluster,
-    options: { useLockKey: true },
   },
 });
 ``` -->
@@ -310,7 +307,6 @@ const queue = QueueManager.getInstance({
     redisClient,
     options: {
       storageName: 'production-queue',
-      useLockKey: true, // Prevents race conditions
     },
   },
 });
@@ -318,8 +314,8 @@ const queue = QueueManager.getInstance({
 
 ### Version Compatibility Note
 
-> ⚠️ **Important**: For versions prior to `v1.0.13`, Redis backend options (`storageName` and
-> `useLockKey`) should be set directly on the backend object, not under the `options` property.
+> ⚠️ **Important**: From version v1.0.16 in redis - there is no longer usage on `useLockKey` due to
+> each process is fully atomic and can run in multi process safely
 
 ```typescript
 // For versions < 1.0.13
@@ -328,7 +324,6 @@ const queue = QueueManager.getInstance({
     type: 'redis',
     redisClient,
     storageName: 'my-queue', // Direct property
-    useLockKey: true, // Direct property
   },
 });
 ```
@@ -456,7 +451,6 @@ const webAppQueue = QueueManager.getInstance({
   backend: {
     type: 'redis',
     redisClient: new Redis(process.env.REDIS_URL),
-    options: { useLockKey: true },
   },
 });
 

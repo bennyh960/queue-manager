@@ -36,7 +36,7 @@ export type QueueManagerEvents<H extends HandlerMap> = {
 export type QueueBackendConfig =
   | { type: 'file'; filePath: string }
   | { type: 'memory' }
-  | { type: 'redis'; redisClient: Redis; options?: { storageName?: string; useLockKey?: boolean } }
+  | { type: 'redis'; redisClient: Redis; options?: { storageName?: string } }
   | { type: 'postgres'; pg: Pool; options?: PostgresOptions }
   | { type: 'custom'; repository: CustomQueueRepositoryProps };
 

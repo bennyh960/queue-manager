@@ -124,7 +124,7 @@ queue.startWorker();
 
 - Memory: Fast, non-persistent (lost on restart)
 - File: local JSON file-based, atomic writes . options: (`filePath:string`)
-- Redis: using 'ioredis' instance , `{redisClient:Redis, storageName?:string, useLockKey?:boolean}`
+- Redis: using 'ioredis' instance , `{redisClient:Redis, options?:{storageName?:string}}`
 - Postgres: using 'pg' pool instance ,
   `{pg:pg.Pool , {tableName?:string,schema?:string, useMigrate:boolean}}`
 - Custom : `CustomQueueRepositoryProps type` (see examples)

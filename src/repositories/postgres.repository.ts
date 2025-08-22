@@ -103,7 +103,7 @@ export class PostgresQueueRepository extends BaseQueueRepository implements Queu
     try {
       await client.query('BEGIN');
 
-      const res = await client.query(
+      const pendingTasks = await client.query(
         `SELECT * FROM "${this.schema}"."${this.tableName}"
        WHERE status = 'pending'
        ORDER BY priority DESC, created_at ASC
@@ -111,7 +111,7 @@ export class PostgresQueueRepository extends BaseQueueRepository implements Queu
        FOR UPDATE SKIP LOCKED`
       );
 
-      if (res.rows.length === 0) {
+      if (pendingTasks.rows.length === 0) {
         await client.query('COMMIT');
         const processingFrozenTasks = await this.pg.query<Task<HandlerMap>>(
           `SELECT * FROM "${this.schema}"."${this.tableName}" WHERE status = 'processing'`
@@ -120,7 +120,7 @@ export class PostgresQueueRepository extends BaseQueueRepository implements Queu
         return null;
       }
 
-      const task = res.rows[0];
+      const task = pendingTasks.rows[0];
 
       await client.query(
         `UPDATE "${this.schema}"."${this.tableName}"
@@ -132,6 +132,7 @@ export class PostgresQueueRepository extends BaseQueueRepository implements Queu
       await client.query('COMMIT');
 
       const camelCaseTask = this.snakeToCamelObject(task);
+      camelCaseTask.status = 'processing';
 
       return {
         ...camelCaseTask,

@@ -8,7 +8,6 @@ import type { QueueRepository } from '../index.js';
 export class RedisQueueRepository extends BaseQueueRepository implements QueueRepository {
   private readonly redis: Redis;
   storageName: string;
-  useLockKey: boolean;
   private dequeueLockName: string;
 
   constructor(
@@ -21,7 +20,6 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
     super(maxRetries, maxProcessingTime);
     this.redis = redisClient;
     this.storageName = options?.storageName || 'queue-manager';
-    this.useLockKey = options?.useLockKey || false;
     this.dequeueLockName = `${this.storageName}:dequeue-lock`;
   }
 
@@ -41,12 +39,12 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
     if (!status) {
       // Load all task IDs from all status lists, then fetch all tasks
       const statuses = ['pending', 'processing', 'failed', 'completed'];
-      const allIds = (await Promise.all(statuses.map(s => this.redis.lrange(`${this.storageName}:queue:${s}`, 0, -1)))).flat();
+      const allIds = (await Promise.all(statuses.map(s => this.redis.zrange(`${this.storageName}:queue:${s}`, 0, -1)))).flat();
       if (allIds.length === 0) return [];
       const tasks = await this.redis.mget(allIds.map(id => `${this.storageName}:task:${id}`));
       return tasks.filter(Boolean).map(t => JSON.parse(t!));
     } else {
-      const ids = await this.redis.lrange(`${this.storageName}:queue:${status}`, 0, -1);
+      const ids = await this.redis.zrange(`${this.storageName}:queue:${status}`, 0, -1);
       if (ids.length === 0) return [];
       const tasks = await this.redis.mget(ids.map((id: string) => `${this.storageName}:task:${id}`));
       return tasks.filter(Boolean).map(t => JSON.parse(t!));
@@ -69,7 +67,7 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
       // Remove from all queues and delete the task
       const multi = this.redis.multi();
       ['pending', 'processing', 'failed', 'completed'].forEach(status => {
-        multi.lrem(`${this.storageName}:queue:${status}`, 0, id);
+        multi.zrem(`${this.storageName}:queue:${status}`, id);
       });
       multi.del(taskKey);
       await multi.exec();
@@ -93,12 +91,7 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
   async enqueue(task: Task<HandlerMap>): Promise<void> {
     const score = this.getScore(task);
     const taskKey = `${this.storageName}:task:${task.id}`;
-    await this.redis
-      .multi()
-      .set(taskKey, JSON.stringify(task))
-      .zadd(`${this.storageName}:queue:pending`, score, task.id)
-      // .zadd(`${this.storageName}:queue:pending`, task.priority || 0, task.id.toString())
-      .exec();
+    await this.redis.multi().set(taskKey, JSON.stringify(task)).zadd(`${this.storageName}:queue:pending`, score, task.id).exec();
   }
 
   // Update a single task atomically
@@ -113,76 +106,75 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
     await this.redis.set(taskKey, JSON.stringify(task));
     // If status changed, move the ID between status queues
     if (obj.status && obj.status !== taskStatus) {
+      const score = this.getScore(task);
       await this.redis
         .multi()
-        .lrem(`${this.storageName}:queue:${taskStatus}`, 0, id.toString())
-        .rpush(`${this.storageName}:queue:${obj.status}`, id.toString())
+        .zrem(`${this.storageName}:queue:${taskStatus}`, id.toString())
+        .zadd(`${this.storageName}:queue:${obj.status}`, score, id.toString())
         .exec();
     }
     return task;
   }
 
-  private async acquireLock(ttl: number): Promise<boolean> {
-    // for single process its enough
-    if (this.dequeueLock) return false;
+  private ATOMIC_DEQUEUE_LUA = `local pending_key = KEYS[1]
+local processing_key = KEYS[2]
+local task_prefix = ARGV[1]
 
-    // for multi process we use redis lock
-    if (this.useLockKey) {
-      const uuid = crypto.randomUUID();
-      const result = await this.redis.set(this.dequeueLockName, uuid, 'PX', ttl, 'NX');
-      return result === 'OK';
-    }
-    this.dequeueLock = true;
-    return true;
-  }
+-- Get the highest-priority task ID
+local task_id = redis.call('zrevrange', pending_key, 0, 0)[1]
+if not task_id then
+  return nil
+end
 
-  private async releaseLock(): Promise<void> {
-    this.dequeueLock = false;
-    if (this.useLockKey) {
-      await this.redis.del(this.dequeueLockName);
-    }
-  }
+-- Remove from pending
+redis.call('zrem', pending_key, task_id)
+
+-- Add to processing with score (can reuse score or set to current time)
+local score = redis.call('time')[1]
+redis.call('zadd', processing_key, score, task_id)
+
+-- Update task status
+local task_key = task_prefix .. task_id
+local task_json = redis.call('get', task_key)
+if not task_json then
+  return nil
+end
+local task = cjson.decode(task_json)
+task.status = 'processing'
+task.updatedAt = score
+redis.call('set', task_key, cjson.encode(task))
+
+return redis.call('get', task_key)`;
 
   // Dequeue: Atomically move task from pending to processing
   override async dequeue(): Promise<Task<HandlerMap> | null> {
     try {
-      // Get all pending tasks and sort them
-      const [taskId] = await this.redis.zrevrange(`${this.storageName}:queue:pending`, 0, 0);
-      if (!taskId) {
-        const processingTasks = await this.loadTasks('processing');
-        await this.checkAndHandleStuckTasks(processingTasks);
+      const pendingQueueKey = `${this.storageName}:queue:pending`;
+      const processingQueueKey = `${this.storageName}:queue:processing`;
+      const taskPrefix = `${this.storageName}:task:`;
+      if (this.dequeueLock) {
         return null;
       }
 
-      const taskStr = await this.redis.get(`${this.storageName}:task:${taskId}`);
+      const taskStr = (await this.redis.eval(this.ATOMIC_DEQUEUE_LUA, 2, pendingQueueKey, processingQueueKey, taskPrefix)) as string | null;
+
+      // Get all pending tasks and sort them
+      if (!taskStr) {
+        const processingTasks = await this.loadTasks('processing');
+        await this.checkAndHandleStuckTasks(processingTasks);
+        return null;
+      } else {
+        this.dequeueLock = true;
+      }
+
       const taskToProcess = taskStr ? (JSON.parse(taskStr) as Task<HandlerMap>) : null;
       if (!taskToProcess) {
         return null; // Task not found
       }
 
-      const isLocked = await this.acquireLock(taskToProcess.maxProcessingTime * taskToProcess.maxRetries + 1000);
-      if (!isLocked) {
-        return null;
-      }
-
-      // Update task status
-      taskToProcess.status = 'processing';
-      taskToProcess.updatedAt = new Date();
-
-      const taskKey = `${this.storageName}:task:${taskId}`;
-      const pendingQueueKey = `${this.storageName}:queue:pending`;
-      const processingQueueKey = `${this.storageName}:queue:processing`;
-
-      await this.redis
-        .multi()
-        .zrem(pendingQueueKey, taskId)
-        .rpush(processingQueueKey, taskId)
-        .set(taskKey, JSON.stringify(taskToProcess))
-        .exec();
-
       return taskToProcess;
     } finally {
-      await this.releaseLock();
+      this.dequeueLock = false;
     }
   }
 }

@@ -48,87 +48,68 @@ describe('QueueManager - Failure Scenarios & Edge Cases', () => {
   });
 
   describe('Concurrency Failure Scenarios', () => {
-    test('should handle race conditions when multiple workers process same task', async () => {
-      console.log('🔍 Redis available:', !!redisClient);
+    const tasksCount = 15;
+    const handlerMaxDelay = 100; // ms - max random delay per task
+    const workerPollDelay = 50; // ms - how often workers check for tasks
+    // With 2 workers, tasks should complete in roughly half the time
+    const expectedDuration = (tasksCount * handlerMaxDelay) / 2;
+    const testTimeout = Math.max(expectedDuration * 1.5, 3000); // At least 3 seconds safety margin
+    test(
+      'should handle race conditions when multiple workers process same task',
+      async () => {
+        const processedTasks: string[] = [];
 
-      const processedTasks: string[] = [];
-      const processingOrder: string[] = [];
+        console.log(
+          `start testing with ${tasksCount} tasks. the delay per task is ~${handlerMaxDelay}ms.\nWorker poll delay is ${workerPollDelay}ms\nTest timeout is ${Math.round(
+            testTimeout / 1000
+          )}s`
+        );
 
-      const raceHandler = async ({ email, subject }: { email: string; subject: string }) => {
-        console.log('🚀 Handler called with:', { email, subject });
-        processingOrder.push(`start-${email}`);
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
-        processedTasks.push(email);
-        processingOrder.push(`end-${email}`);
-        return `Processed ${email}`;
-      };
+        const raceHandler = async ({ email, subject }: { email: string; subject: string }) => {
+          await new Promise(resolve => setTimeout(resolve, Math.random() * handlerMaxDelay));
+          processedTasks.push(email);
+          return `Processed ${email}`;
+        };
 
-      if (!redisClient) return;
+        if (!redisClient) return;
 
-      const qm1 = QueueManager.getInstance<TestHandlers>({
-        backend: { type: 'redis', redisClient, options: { storageName: storageKey, useLockKey: true } },
-        delay: 10,
-        singleton: false,
-        logger: console,
-      });
-
-      const qm2 = QueueManager.getInstance<TestHandlers>({
-        backend: { type: 'redis', redisClient, options: { storageName: storageKey, useLockKey: true } },
-        delay: 10,
-        singleton: false,
-        logger: console,
-      });
-
-      // Register handlers
-      qm1.register('emailHandler', raceHandler, { useAutoSchema: true });
-      qm2.register('emailHandler', raceHandler, { useAutoSchema: true });
-
-      // Add tasks
-      for (let i = 0; i < 5; i++) {
-        const task = await qm1.addTaskToQueue('emailHandler', {
-          email: `task-${i}@test.com`,
-          subject: `Subject ${i}`,
+        const qm1 = QueueManager.getInstance<TestHandlers>({
+          backend: { type: 'redis', redisClient, options: { storageName: storageKey, useLockKey: true } },
+          delay: workerPollDelay,
+          singleton: false,
+          //   logger: console,
         });
-      }
 
-      // DEBUG: Check what's in Redis after adding tasks
-      console.log('🔑 Checking Redis after adding tasks...');
-      const keysAfterAdd = await redisClient.keys(`${storageKey}*`);
-      console.log('📝 Redis keys:', keysAfterAdd);
+        const qm2 = QueueManager.getInstance<TestHandlers>({
+          backend: { type: 'redis', redisClient, options: { storageName: storageKey, useLockKey: true } },
+          delay: workerPollDelay,
+          singleton: false,
+          //   logger: console,
+        });
 
-      for (const key of keysAfterAdd) {
-        const type = await redisClient.type(key);
-        console.log(`📊 Key: ${key}, Type: ${type}`);
+        // Register handlers
+        qm1.register('emailHandler', raceHandler, { useAutoSchema: true });
+        qm2.register('emailHandler', raceHandler, { useAutoSchema: true });
 
-        if (type === 'zset') {
-          const items = await redisClient.zrange(key, 0, -1, 'WITHSCORES');
-          console.log(`📄 ZSet content:`, items);
-        } else if (type === 'string') {
-          const content = await redisClient.get(key);
-          console.log(`📄 String content:`, content);
+        // Add tasks
+        for (let i = 0; i < tasksCount; i++) {
+          const task = await qm1.addTaskToQueue('emailHandler', {
+            email: `task-${i}@test.com`,
+            subject: `Subject ${i}`,
+          });
         }
-      }
 
-      // Start workers
-      console.log('🏃 Starting both workers...');
-      await Promise.all([qm1.startWorker(), qm2.startWorker()]);
+        await Promise.all([qm1.startWorker(), qm2.startWorker()]);
+        await new Promise(resolve => setTimeout(resolve, testTimeout));
 
-      // Wait and check Redis during processing
-      await new Promise(resolve => setTimeout(resolve, 1000));
+        // console.log('📊 Final processedTasks:', processedTasks);
 
-      console.log('🔍 Checking Redis during processing...');
-      const keysDuringProcess = await redisClient.keys(`${storageKey}*`);
-      console.log('📝 Redis keys during processing:', keysDuringProcess);
+        await Promise.all([qm1.stopWorker(), qm2.stopWorker()]);
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      console.log('📊 Final processedTasks:', processedTasks);
-      console.log('📊 Processing order:', processingOrder);
-
-      await Promise.all([qm1.stopWorker(), qm2.stopWorker()]);
-
-      expect(processedTasks).toHaveLength(5);
-    }, 15000);
+        expect(processedTasks).toHaveLength(tasksCount);
+      },
+      testTimeout * 1.2
+    );
 
     // test('should handle concurrent task additions without data corruption', async () => {
     //   const queueManager = QueueManager.getInstance<TestHandlers>({
