@@ -1,4 +1,4 @@
-import type { HandlerMap, QueueBackendConfig, Task } from '../types/index.js';
+import type { HandlerMap, QueueBackendConfig, Task, TaskBase } from '../types/index.js';
 import { BaseQueueRepository } from './base.repository.js';
 import type { Redis } from 'ioredis';
 import crypto from 'crypto';
@@ -38,7 +38,7 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
   async loadTasks(status?: Task<HandlerMap>['status']): Promise<Task<HandlerMap>[]> {
     if (!status) {
       // Load all task IDs from all status lists, then fetch all tasks
-      const statuses = ['pending', 'processing', 'failed', 'completed'];
+      const statuses: TaskBase['status'][] = ['pending', 'processing', 'failed', 'deleted', 'done'];
       const allIds = (await Promise.all(statuses.map(s => this.redis.zrange(`${this.storageName}:queue:${s}`, 0, -1)))).flat();
       if (allIds.length === 0) return [];
       const tasks = await this.redis.mget(allIds.map(id => `${this.storageName}:task:${id}`));
@@ -80,7 +80,7 @@ export class RedisQueueRepository extends BaseQueueRepository implements QueueRe
     return task;
   }
 
-  getScore(task: Task<HandlerMap>): number {
+  private getScore(task: Task<HandlerMap>): number {
     const PRIORITY_MULTIPLIER = 1000000; // Large multiplier to prioritize by priority first
     // Calculate score based on priority and createdAt
     // Higher priority first, then older (smaller createdAt)

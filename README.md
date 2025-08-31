@@ -28,10 +28,6 @@ management.
 
 ---
 
-#### 🚨 CRITICAL BUG FIX in redis - v1.0.15
-
-> ⚠️ URGENT UPDATE REQUIRED : Update immediately if using Redis backend:
-
 <!-- ## 🚧 Project Status: Actively Improving
 
 > **Note:**
@@ -180,6 +176,8 @@ Add a new task to the queue.
       process the higher priority first.
     - `skipOnPayloadError` : if it `true` , it will just warn you if payload is not valid but
       continue. else if it `false` it will kill the process and u get runtime error.
+  - `extraTaskProps`: (optional) - allow you register more properties in your task record. (Not
+    supported yet on postgres)
 - **Returns:** `Promise<Task>`
 
 ---

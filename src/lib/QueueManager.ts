@@ -157,10 +157,14 @@ export class QueueManager<H extends HandlerMap> {
       maxProcessingTime?: Task<HandlerMap>['maxProcessingTime'];
       priority?: Task<HandlerMap>['priority'];
       skipOnPayloadError?: boolean;
-    }
+    },
+    extraTaskProps?: Record<string, any>
   ): Promise<Task<H>> {
     if (options?.maxRetries && options?.maxRetries > MAX_RETRIES_LIMIT) {
       throw new MaxRetriesLimitError(options.maxRetries);
+    }
+    if (this.backend.type === 'postgres' && extraTaskProps) {
+      throw new Error('Another task properties are not supported for Postgres backend');
     }
 
     const validationResult = this.validateHandlerParams(handler as string, payload);
@@ -186,6 +190,7 @@ export class QueueManager<H extends HandlerMap> {
       maxProcessingTime: options?.maxProcessingTime ?? handlerEntry?.options?.maxProcessingTime ?? this.MAX_PROCESSING_TIME,
       retryCount: 0,
       priority: options?.priority ?? 0,
+      ...extraTaskProps,
     };
     await this.repository.enqueue(task as Task<HandlerMap>);
 
@@ -210,9 +215,9 @@ export class QueueManager<H extends HandlerMap> {
     }
   }
 
-  async getAllTasks(): Promise<Task<H>[]> {
+  async getAllTasks(status?: Task<HandlerMap>['status']): Promise<Task<H>[]> {
     try {
-      return await this.repository.loadTasks();
+      return await this.repository.loadTasks(status);
     } catch (error) {
       this.log('error', 'Failed to load tasks:', error);
       throw error;

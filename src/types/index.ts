@@ -14,6 +14,7 @@ export interface TaskBase {
   maxProcessingTime: number;
   retryCount: number;
   priority: number;
+  [key: string]: any;
 }
 export type Task<H extends HandlerMap> = {
   [K in keyof H]: TaskBase & {
